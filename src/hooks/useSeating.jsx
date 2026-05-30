@@ -74,7 +74,8 @@ export const SeatingProvider = ({ children }) => {
       const uraAll = [...uraList, ...noInfoList];
       const rows = Math.max(omoList.length, uraAll.length);
       for (let i = 0; i < rows; i++) {
-        newPults.push({ id: "p" + (i + 1), col: "L", row: i, slots: [omoList[i]?.name || null, uraAll[i]?.name || null] });
+        // [ウラ, オモテ] の順に入れ替え
+        newPults.push({ id: "p" + (i + 1), col: "L", row: i, slots: [uraAll[i]?.name || null, omoList[i]?.name || null] });
       }
     } else {
       for (let i = 0; i < attending.length; i += 2) {
