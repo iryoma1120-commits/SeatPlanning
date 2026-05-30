@@ -58,12 +58,16 @@ export const SeatingProvider = ({ children }) => {
         if (!m.vnInfo) return isVn2;
         return m.vnInfo[pk] === tgt;
       });
+      // ♪付きを優先
+      attending.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
     } else {
       attending = allMembers.filter(m => {
         if (m.part !== part) return false;
         const a = m.att[date];
         return a && ["○", "△", "▽", "◯"].includes(a.status);
       });
+      // ♪付きを優先
+      attending.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
     }
 
     const newPults = [];
@@ -72,6 +76,11 @@ export const SeatingProvider = ({ children }) => {
       const uraList = attending.filter(m => m.vnInfo?.[sk] === "ウラ");
       const noInfoList = attending.filter(m => !m.vnInfo);
       const uraAll = [...uraList, ...noInfoList];
+
+      // 各リスト内でも♪付きを先頭にする（Vnはオモテ/ウラ別々に管理されているため）
+      omoList.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
+      uraAll.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
+
       const rows = Math.max(omoList.length, uraAll.length);
       for (let i = 0; i < rows; i++) {
         // [ウラ, オモテ] の順に入れ替え
