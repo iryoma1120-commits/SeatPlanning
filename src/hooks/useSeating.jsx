@@ -16,6 +16,8 @@ export const SeatingProvider = ({ children }) => {
   const [piece, setPiece] = useState("前曲");
   const [msg, setMsg] = useState({ text: "", type: "" });
 
+  const isHonban = piece === "本番";
+
   const availableParts = useMemo(() => {
     const stringParts = ["Vn1st", "Vn2nd", "Va", "Vc", "Cb"];
     return stringParts;
@@ -51,20 +53,30 @@ export const SeatingProvider = ({ children }) => {
     let attending;
     if (isVn) {
       const tgt = isVn1 ? "1st" : "2nd";
+      const isHonban = piece === "本番";
+      const pk = (piece === "前曲" || piece === "中曲") ? "mae" : "main";
+      const sk = (piece === "前曲" || piece === "中曲") ? "ms" : "ns";
+
       attending = allMembers.filter(m => {
         if (m.part !== "Vn") return false;
-        const a = m.att[date];
-        if (!a || !["○", "△", "▽", "◯"].includes(a.status)) return false;
+        if (!isHonban) {
+          const a = m.att[date];
+          if (!a || !["○", "△", "▽", "◯"].includes(a.status)) return false;
+        }
         if (!m.vnInfo) return isVn2;
         return m.vnInfo[pk] === tgt;
       });
       // ♪付きを優先
       attending.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
     } else {
+      const isHonban = piece === "本番";
       attending = allMembers.filter(m => {
         if (m.part !== part) return false;
-        const a = m.att[date];
-        return a && ["○", "△", "▽", "◯"].includes(a.status);
+        if (!isHonban) {
+          const a = m.att[date];
+          return a && ["○", "△", "▽", "◯"].includes(a.status);
+        }
+        return true;
       });
       // ♪付きを優先
       attending.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
@@ -72,6 +84,7 @@ export const SeatingProvider = ({ children }) => {
 
     const newPults = [];
     if (isVn) {
+      const sk = (piece === "前曲" || piece === "中曲") ? "ms" : "ns";
       const omoList = attending.filter(m => m.vnInfo?.[sk] === "オモテ");
       const uraList = attending.filter(m => m.vnInfo?.[sk] === "ウラ");
       const noInfoList = attending.filter(m => !m.vnInfo);

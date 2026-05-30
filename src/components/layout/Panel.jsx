@@ -39,14 +39,14 @@ export default function Panel() {
               {availableParts.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          {isVn && (
-            <div className="flex flex-col">
-              <label className="text-[11px] text-[#7a90b0] mb-1">🎵 曲（Vnのみ）</label>
-              <select className="bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-[#dde4f0] text-[13px] min-w-[130px]" value={piece} onChange={e => setPiece(e.target.value)}>
-                <option>前曲</option><option>中曲</option><option>メイン曲</option>
-              </select>
-            </div>
-          )}
+          <div className="flex flex-col">
+            <label className="text-[11px] text-[#7a90b0] mb-1">🎵 曲設定</label>
+            <select className="bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-[#dde4f0] text-[13px] min-w-[130px]" value={piece} onChange={e => setPiece(e.target.value)}>
+              {isVn && <><option>前曲</option><option>中曲</option></>}
+              <option>メイン曲</option>
+              <option>本番</option>
+            </select>
+          </div>
         </div>
       </div>
     </>
