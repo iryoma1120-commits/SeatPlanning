@@ -17,13 +17,9 @@ export const SeatingProvider = ({ children }) => {
   const [msg, setMsg] = useState({ text: "", type: "" });
 
   const availableParts = useMemo(() => {
-    const rawParts = [...new Set(allMembers.map(m => m.part))];
-    const parts = [];
-    for (const p of rawParts) {
-      if (p === "Vn") { parts.push("Vn1st", "Vn2nd"); } else { parts.push(p); }
-    }
-    return [...new Set(parts)].sort((a, b) => PART_ORDER.indexOf(a) - PART_ORDER.indexOf(b));
-  }, [allMembers]);
+    const stringParts = ["Vn1st", "Vn2nd", "Va", "Vc", "Cb"];
+    return stringParts;
+  }, []);
 
   const loadFile = async (file) => {
     setMsg({ text: "読込中…", type: "" });

@@ -77,7 +77,7 @@ export const COLORS = {
   default:{bg:"#141414",border:"#94a3b8",text:"#cbd5e1",badge:"#475569"},
 };
 
-export const PART_ORDER=["Vn1st","Vn2nd","Va","Vc","Cb","Fl","Ob","Cl","Fg","Hr","Tp","Tb","Perc","Harp","Piano","Celesta"];
+export const PART_ORDER=["Vn1st","Vn2nd","Va","Vc","Cb"];
 
 export function getC(part){
   return COLORS[part]||COLORS.default;
