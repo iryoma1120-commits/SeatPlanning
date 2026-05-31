@@ -42,9 +42,16 @@ export default function Panel() {
           <div className="flex flex-col">
             <label className="text-[11px] text-[#7a90b0] mb-1">🎵 曲設定</label>
             <select className="bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-[#dde4f0] text-[13px] min-w-[130px]" value={piece} onChange={e => setPiece(e.target.value)}>
-              {isVn && <><option>前曲</option><option>中曲</option></>}
-              <option>メイン曲</option>
-              <option>本番</option>
+              <optgroup label="練習">
+                <option>前曲</option>
+                <option>中曲</option>
+                <option>メイン曲</option>
+              </optgroup>
+              <optgroup label="本番">
+                <option>本番：前曲</option>
+                <option>本番：中曲</option>
+                <option>本番：メイン曲</option>
+              </optgroup>
             </select>
           </div>
         </div>

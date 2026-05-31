@@ -16,8 +16,6 @@ export const SeatingProvider = ({ children }) => {
   const [piece, setPiece] = useState("前曲");
   const [msg, setMsg] = useState({ text: "", type: "" });
 
-  const isHonban = piece === "本番";
-
   const availableParts = useMemo(() => {
     const stringParts = ["Vn1st", "Vn2nd", "Va", "Vc", "Cb"];
     return stringParts;
@@ -46,16 +44,14 @@ export const SeatingProvider = ({ children }) => {
     const isVn1 = (part === "Vn1st");
     const isVn2 = (part === "Vn2nd");
     const isVn = (isVn1 || isVn2);
-    const isMae = (piece === "前曲" || piece === "中曲");
+    const isMae = piece.includes("前曲") || piece.includes("中曲");
+    const isHonban = piece.includes("本番");
     const pk = isMae ? "mae" : "main";
     const sk = isMae ? "ms" : "ns";
 
     let attending;
     if (isVn) {
       const tgt = isVn1 ? "1st" : "2nd";
-      const isHonban = piece === "本番";
-      const pk = (piece === "前曲" || piece === "中曲") ? "mae" : "main";
-      const sk = (piece === "前曲" || piece === "中曲") ? "ms" : "ns";
 
       attending = allMembers.filter(m => {
         if (m.part !== "Vn") return false;
@@ -69,7 +65,6 @@ export const SeatingProvider = ({ children }) => {
       // ♪付きを優先
       attending.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
     } else {
-      const isHonban = piece === "本番";
       attending = allMembers.filter(m => {
         if (m.part !== part) return false;
         if (!isHonban) {
