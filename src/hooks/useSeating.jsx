@@ -93,7 +93,6 @@ export const SeatingProvider = ({ children }) => {
     const newPults = [];
     if (isVn) {
       // バイオリン：オモテとウラの指定を反映させてプルトを組む
-      const sk = (piece === "前曲" || piece === "中曲") ? "ms" : "ns";
       const omoList = attending.filter(m => m.vnInfo?.[sk] === "オモテ");
       const uraList = attending.filter(m => m.vnInfo?.[sk] === "ウラ");
       const noInfoList = attending.filter(m => !m.vnInfo);
@@ -111,6 +110,7 @@ export const SeatingProvider = ({ children }) => {
     } else {
       // その他の楽器：リストの順に2人ずつプルトを組む
       for (let i = 0; i < attending.length; i += 2) {
+        // [アウトサイド(オモテ), インサイド(ウラ)] の順で格納
         newPults.push({ id: "p" + (i / 2 + 1), col: "L", row: i / 2, slots: [attending[i]?.name || null, attending[i + 1]?.name || null] });
       }
     }
