@@ -30,6 +30,7 @@ export const VN_PARTS = {
   "佐々木 達彦": { mae: "1st", ms: "オモテ", main: "1st", ns: "オモテ" },
   "佐々木達彦": { mae: "1st", ms: "オモテ", main: "1st", ns: "オモテ" },
   "佐藤 由梨花": { mae: "1st", ms: "ウラ", main: "1st", ns: "ウラ" },
+  "佐藤由梨花": { mae: "1st", ms: "ウラ", main: "1st", ns: "ウラ" },
   "志幸 直人": { mae: "2nd", ms: "ウラ", main: "2nd", ns: "オモテ" },
   "志幸直人": { mae: "2nd", ms: "ウラ", main: "2nd", ns: "オモテ" },
   "清水 優暉": { mae: "1st", ms: "ウラ", main: "1st", ns: "ウラ" },
