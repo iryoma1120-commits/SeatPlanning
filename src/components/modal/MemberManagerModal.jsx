@@ -101,33 +101,55 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
     }
   };
 
+  const getCleanSubPart = (val, isVn) => {
+    if (val === '降り') return '降り';
+    if (isVn) {
+      return (val === '1st' || val === '2nd') ? val : '1st';
+    } else {
+      return '乗り';
+    }
+  };
+
+  const handleFormPartChange = (newPart) => {
+    setFormPart(newPart);
+    const isNowVn = (newPart === 'Vn');
+    setFormMaeSubPart(prev => getCleanSubPart(prev, isNowVn));
+    setFormNakaSubPart(prev => getCleanSubPart(prev, isNowVn));
+    setFormMainSubPart(prev => getCleanSubPart(prev, isNowVn));
+  };
+
   const startEdit = (m) => {
     if (isAuthRequired) {
       alert("編集するにはログインが必要です。");
       return;
     }
+    const isVn = (m.part === 'Vn');
     setEditingMember(m);
     setFormName(m.name);
     setFormPart(m.part || 'Vn');
     setFormIsTop(Boolean(m.is_top));
-    setFormMaeSubPart(m.assignments?.mae?.sub_part || '1st');
+    setFormMaeSubPart(getCleanSubPart(m.assignments?.mae?.sub_part, isVn));
     setFormMaeSide(m.assignments?.mae?.side || 'オモテ');
-    setFormNakaSubPart(m.assignments?.naka?.sub_part || m.assignments?.mae?.sub_part || '1st');
+    setFormNakaSubPart(getCleanSubPart(m.assignments?.naka?.sub_part || m.assignments?.mae?.sub_part, isVn));
     setFormNakaSide(m.assignments?.naka?.side || m.assignments?.mae?.side || 'オモテ');
-    setFormMainSubPart(m.assignments?.main?.sub_part || '1st');
+    setFormMainSubPart(getCleanSubPart(m.assignments?.main?.sub_part, isVn));
     setFormMainSide(m.assignments?.main?.side || 'オモテ');
   };
 
   const resetForm = () => {
+    const defaultPart = selectedPart === 'All' ? 'Vn' : selectedPart;
+    const isVn = (defaultPart === 'Vn');
+    const defaultSubPart = isVn ? '1st' : '乗り';
+
     setEditingMember(null);
     setFormName('');
-    setFormPart(selectedPart === 'All' ? 'Vn' : selectedPart);
+    setFormPart(defaultPart);
     setFormIsTop(false);
-    setFormMaeSubPart('1st');
+    setFormMaeSubPart(defaultSubPart);
     setFormMaeSide('オモテ');
-    setFormNakaSubPart('1st');
+    setFormNakaSubPart(defaultSubPart);
     setFormNakaSide('オモテ');
-    setFormMainSubPart('1st');
+    setFormMainSubPart(defaultSubPart);
     setFormMainSide('オモテ');
   };
 
@@ -202,14 +224,16 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
     setIsSubmitting(true);
     try {
       for (const m of toImport) {
+        const isVn = ((m.part || 'Vn') === 'Vn');
+        const defaultSubPart = isVn ? '1st' : '乗り';
         await saveMember({
           part: m.part || 'Vn',
           name: m.name,
           is_top: Boolean(m.isTop),
           assignments: {
-            mae: { sub_part: "1st", side: "オモテ" },
-            naka: { sub_part: "1st", side: "オモテ" },
-            main: { sub_part: "1st", side: "オモテ" }
+            mae: { sub_part: defaultSubPart, side: "オモテ" },
+            naka: { sub_part: defaultSubPart, side: "オモテ" },
+            main: { sub_part: defaultSubPart, side: "オモテ" }
           }
         });
       }
@@ -350,24 +374,28 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                       const isPending = Boolean(pendingChanges[memberKey]);
 
                       const renderModalPieceCell = (pieceKey, pieceName) => {
+                        const isVn = (m.part === 'Vn');
+                        const subPartOptions = isVn ? ['1st', '2nd', '降り'] : ['乗り', '降り'];
+
                         const currentPiece = activeMember.assignments?.[pieceKey] || 
                           (pieceKey === 'naka' ? activeMember.assignments?.mae : null) || 
-                          { sub_part: '1st', side: 'オモテ' };
+                          { sub_part: isVn ? '1st' : '乗り', side: 'オモテ' };
 
                         const originalPiece = m.assignments?.[pieceKey] || 
                           (pieceKey === 'naka' ? m.assignments?.mae : null) || 
-                          { sub_part: '1st', side: 'オモテ' };
+                          { sub_part: isVn ? '1st' : '乗り', side: 'オモテ' };
 
-                        const subPart = currentPiece.sub_part || '1st';
+                        const subPart = getCleanSubPart(currentPiece.sub_part, isVn);
+                        const origSubPart = getCleanSubPart(originalPiece.sub_part, isVn);
                         const side = currentPiece.side || 'オモテ';
                         const isFuri = subPart === '降り';
-                        const isSubPartChanged = isPending && originalPiece.sub_part !== subPart;
+                        const isSubPartChanged = isPending && origSubPart !== subPart;
 
                         return (
                           <td className="p-2.5">
                             <div className="flex items-center gap-1 flex-nowrap">
                               <div className="inline-flex rounded border border-[#223859] bg-[#060e1c] p-0.5">
-                                {['1st', '2nd', '降り'].map(sp => {
+                                {subPartOptions.map(sp => {
                                   const isSelected = subPart === sp;
                                   return (
                                     <button
@@ -491,7 +519,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                   <label className="block text-gray-400 mb-1">楽器パート</label>
                   <select 
                     value={formPart} 
-                    onChange={e => setFormPart(e.target.value)}
+                    onChange={e => handleFormPartChange(e.target.value)}
                     disabled={isAuthRequired}
                     className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-white disabled:opacity-40"
                   >
@@ -540,9 +568,18 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                       disabled={isAuthRequired}
                       className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
-                      <option value="1st">1st</option>
-                      <option value="2nd">2nd</option>
-                      <option value="降り">降り (非出演)</option>
+                      {formPart === 'Vn' ? (
+                        <>
+                          <option value="1st">1st</option>
+                          <option value="2nd">2nd</option>
+                          <option value="降り">降り (非出演)</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="乗り">乗り (出演)</option>
+                          <option value="降り">降り (非出演)</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -572,9 +609,18 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                       disabled={isAuthRequired}
                       className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
-                      <option value="1st">1st</option>
-                      <option value="2nd">2nd</option>
-                      <option value="降り">降り (非出演)</option>
+                      {formPart === 'Vn' ? (
+                        <>
+                          <option value="1st">1st</option>
+                          <option value="2nd">2nd</option>
+                          <option value="降り">降り (非出演)</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="乗り">乗り (出演)</option>
+                          <option value="降り">降り (非出演)</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div>
@@ -604,9 +650,18 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                       disabled={isAuthRequired}
                       className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
-                      <option value="1st">1st</option>
-                      <option value="2nd">2nd</option>
-                      <option value="降り">降り (非出演)</option>
+                      {formPart === 'Vn' ? (
+                        <>
+                          <option value="1st">1st</option>
+                          <option value="2nd">2nd</option>
+                          <option value="降り">降り (非出演)</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="乗り">乗り (出演)</option>
+                          <option value="降り">降り (非出演)</option>
+                        </>
+                      )}
                     </select>
                   </div>
                   <div>
