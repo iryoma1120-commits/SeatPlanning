@@ -18,6 +18,7 @@ export default function MemberManagerView({ onOpenAuth }) {
     dbMembers, 
     allMembers, 
     saveMember, 
+    saveMembersBulk,
     removeMember, 
     loadDbMembers,
     loadingMembers 
@@ -29,6 +30,9 @@ export default function MemberManagerView({ onOpenAuth }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingMember, setEditingMember] = useState(null); // null: 新規, オブジェクト: 編集
 
+  // リスト直接編集の保留中変更 { [memberKey]: updatedMemberObject }
+  const [pendingChanges, setPendingChanges] = useState({});
+
   // フォーム用入力値
   const [formName, setFormName] = useState('');
   const [formPart, setFormPart] = useState('Vn');
@@ -38,7 +42,6 @@ export default function MemberManagerView({ onOpenAuth }) {
   const [formMainSubPart, setFormMainSubPart] = useState('1st');
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [updatingKey, setUpdatingKey] = useState(null); // クイック更新中の項目キー
 
   // フィルタリング（Vn, Va, Vc, Cb のみを表示対象とする）
   const filteredMembers = useMemo(() => {
@@ -63,38 +66,64 @@ export default function MemberManagerView({ onOpenAuth }) {
   const isAuthRequired = isSupabaseConfigured && !user;
 
   /**
-   * リスト上から直接パート分け(1st/2nd)やオモテ/ウラを即座に更新・保存する
+   * リスト上でパート分け(1st/2nd)やオモテ/ウラを変更したとき、ローカル状態に保留する
    */
-  const handleQuickUpdate = async (member, pieceKey, field, value) => {
-    if (isAuthRequired) {
-      alert("変更を保存するにはログインが必要です。");
-      onOpenAuth && onOpenAuth();
-      return;
-    }
+  const handleStageChange = (member, pieceKey, field, value) => {
+    const key = member.id || member.name_normalized || member.name;
+    const currentObj = pendingChanges[key] || member;
+    const currentPieceConfig = currentObj.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
 
-    const currentPieceConfig = member.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
     const updatedPieceConfig = {
       ...currentPieceConfig,
       [field]: value,
     };
 
     const updatedAssignments = {
-      ...(member.assignments || {}),
+      ...(currentObj.assignments || {}),
       [pieceKey]: updatedPieceConfig,
     };
 
-    const targetKey = `${member.id || member.name}-${pieceKey}-${field}`;
-    setUpdatingKey(targetKey);
-
-    try {
-      await saveMember({
-        ...member,
+    setPendingChanges(prev => ({
+      ...prev,
+      [key]: {
+        ...currentObj,
         assignments: updatedAssignments,
-      });
+      }
+    }));
+  };
+
+  /**
+   * 保留中の変更をすべてまとめてSupabaseに適用・保存する
+   */
+  const handleApplyAll = async () => {
+    if (isAuthRequired) {
+      alert("変更を保存するにはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
+
+    const toSave = Object.values(pendingChanges);
+    if (toSave.length === 0) return;
+
+    setIsSubmitting(true);
+    try {
+      await saveMembersBulk(toSave);
+      setPendingChanges({}); // 保留リストをクリア
     } catch (err) {
-      alert("更新エラー: " + err.message);
+      alert("一括適用エラー: " + err.message);
     } finally {
-      setUpdatingKey(null);
+      setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * 保留中の変更を取り消す
+   */
+  const handleDiscardAll = () => {
+    if (Object.keys(pendingChanges).length > 0) {
+      if (window.confirm("未適用の変更を取り消して元の状態に戻しますか？")) {
+        setPendingChanges({});
+      }
     }
   };
 
@@ -342,6 +371,40 @@ export default function MemberManagerView({ onOpenAuth }) {
             </div>
           </div>
 
+          {/* 未適用の変更がある場合に表示する一括保存・適用バー */}
+          {Object.keys(pendingChanges).length > 0 && (
+            <div className="bg-gradient-to-r from-amber-950/90 to-blue-950/90 border border-amber-600/80 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+              <div className="flex items-center gap-2.5 text-xs text-amber-200">
+                <span className="text-xl animate-pulse">⚡</span>
+                <span>
+                  <strong>{Object.keys(pendingChanges).length} 名</strong> のパート分け・オモテウラの変更が未適用です
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDiscardAll}
+                  disabled={isSubmitting}
+                  className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition"
+                >
+                  ↩ 取り消す
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyAll}
+                  disabled={isSubmitting}
+                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-lg flex items-center gap-1.5"
+                >
+                  {isSubmitting ? (
+                    <><span>⏳</span> 保存中…</>
+                  ) : (
+                    <><span>💾</span> 変更を適用して保存 ({Object.keys(pendingChanges).length}件)</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* メンバー確認テーブル */}
           <div className="bg-[#070e1c] border border-[#1a2d45] rounded-xl overflow-hidden shadow">
             <div className="overflow-x-auto max-h-[520px]">
@@ -355,42 +418,54 @@ export default function MemberManagerView({ onOpenAuth }) {
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-[#0d182b] text-gray-300 border-b border-[#1a2d45] sticky top-0">
+                  <thead className="bg-[#0d182b] text-gray-300 border-b border-[#1a2d45] sticky top-0 z-10">
                     <tr>
                       <th className="p-3">パート</th>
                       <th className="p-3">氏名</th>
                       <th className="p-3">役職</th>
-                      <th className="p-3 min-w-[150px]">
+                      <th className="p-3 min-w-[155px]">
                         前曲・中曲
-                        <span className="block text-[10px] font-normal text-blue-400/80">※クリックで直接変更</span>
+                        <span className="block text-[10px] font-normal text-blue-400/80">※クリックで選択</span>
                       </th>
-                      <th className="p-3 min-w-[150px]">
+                      <th className="p-3 min-w-[155px]">
                         メイン曲
-                        <span className="block text-[10px] font-normal text-blue-400/80">※クリックで直接変更</span>
+                        <span className="block text-[10px] font-normal text-blue-400/80">※クリックで選択</span>
                       </th>
                       <th className="p-3 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#132238]">
                     {filteredMembers.map(m => {
-                      const maeSubPart = m.assignments?.mae?.sub_part || '1st';
-                      const maeSide = m.assignments?.mae?.side || 'オモテ';
-                      const mainSubPart = m.assignments?.main?.sub_part || '1st';
-                      const mainSide = m.assignments?.main?.side || 'オモテ';
+                      const memberKey = m.id || m.name_normalized || m.name;
+                      const activeMember = pendingChanges[memberKey] || m;
+                      const isPending = Boolean(pendingChanges[memberKey]);
 
-                      const isUpdatingMae = updatingKey?.startsWith(`${m.id || m.name}-mae`);
-                      const isUpdatingMain = updatingKey?.startsWith(`${m.id || m.name}-main`);
+                      const maeSubPart = activeMember.assignments?.mae?.sub_part || '1st';
+                      const maeSide = activeMember.assignments?.mae?.side || 'オモテ';
+                      const mainSubPart = activeMember.assignments?.main?.sub_part || '1st';
+                      const mainSide = activeMember.assignments?.main?.side || 'オモテ';
 
                       return (
                         <tr 
-                          key={m.id || m.name} 
+                          key={memberKey} 
                           className={`hover:bg-[#0c182c] transition ${
-                            editingMember?.id === m.id ? 'bg-blue-950/40 border-l-4 border-l-blue-500' : ''
+                            editingMember?.id === m.id 
+                              ? 'bg-blue-950/40 border-l-4 border-l-blue-500' 
+                              : isPending 
+                                ? 'bg-amber-950/25 border-l-4 border-l-amber-500' 
+                                : ''
                           }`}
                         >
                           <td className="p-3 font-bold text-blue-400">{m.part}</td>
                           <td className="p-3 font-medium text-white text-[13px] whitespace-nowrap">
-                            {m.name}
+                            <div className="flex items-center gap-1.5">
+                              <span>{m.name}</span>
+                              {isPending && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                                  未適用
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3">
                             {m.is_top ? (
@@ -413,14 +488,15 @@ export default function MemberManagerView({ onOpenAuth }) {
                                     <button
                                       key={sp}
                                       type="button"
-                                      disabled={isAuthRequired || isUpdatingMae}
-                                      onClick={() => handleQuickUpdate(m, 'mae', 'sub_part', sp)}
+                                      onClick={() => handleStageChange(m, 'mae', 'sub_part', sp)}
                                       className={`px-2 py-0.5 text-xs font-bold rounded transition ${
                                         isSelected
-                                          ? 'bg-blue-600 text-white shadow'
+                                          ? isPending && (m.assignments?.mae?.sub_part || '1st') !== sp
+                                            ? 'bg-amber-600 text-white shadow'
+                                            : 'bg-blue-600 text-white shadow'
                                           : 'text-gray-400 hover:text-white hover:bg-[#122238]'
-                                      } ${isUpdatingMae ? 'opacity-50 cursor-wait' : ''}`}
-                                      title={`前曲を ${sp} に設定`}
+                                      }`}
+                                      title={`前曲を ${sp} に設定（適用ボタンで保存）`}
                                     >
                                       {sp}
                                     </button>
@@ -431,17 +507,16 @@ export default function MemberManagerView({ onOpenAuth }) {
                               {/* オモテ / ウラ トグルボタン */}
                               <button
                                 type="button"
-                                disabled={isAuthRequired || isUpdatingMae}
                                 onClick={() => {
                                   const nextSide = maeSide === 'オモテ' ? 'ウラ' : 'オモテ';
-                                  handleQuickUpdate(m, 'mae', 'side', nextSide);
+                                  handleStageChange(m, 'mae', 'side', nextSide);
                                 }}
                                 className={`px-2 py-0.5 text-[11px] font-medium rounded-lg border transition ${
                                   maeSide === 'ウラ'
                                     ? 'bg-purple-950/70 border-purple-800 text-purple-300 hover:bg-purple-900/80'
                                     : 'bg-emerald-950/70 border-emerald-800 text-emerald-300 hover:bg-emerald-900/80'
-                                } ${isUpdatingMae ? 'opacity-50 cursor-wait' : ''}`}
-                                title="クリックで前曲のオモテ/ウラを切り替え"
+                                }`}
+                                title="クリックで前曲のオモテ/ウラを切り替え（適用ボタンで保存）"
                               >
                                 {maeSide}
                               </button>
@@ -459,14 +534,15 @@ export default function MemberManagerView({ onOpenAuth }) {
                                     <button
                                       key={sp}
                                       type="button"
-                                      disabled={isAuthRequired || isUpdatingMain}
-                                      onClick={() => handleQuickUpdate(m, 'main', 'sub_part', sp)}
+                                      onClick={() => handleStageChange(m, 'main', 'sub_part', sp)}
                                       className={`px-2 py-0.5 text-xs font-bold rounded transition ${
                                         isSelected
-                                          ? 'bg-blue-600 text-white shadow'
+                                          ? isPending && (m.assignments?.main?.sub_part || '1st') !== sp
+                                            ? 'bg-amber-600 text-white shadow'
+                                            : 'bg-blue-600 text-white shadow'
                                           : 'text-gray-400 hover:text-white hover:bg-[#122238]'
-                                      } ${isUpdatingMain ? 'opacity-50 cursor-wait' : ''}`}
-                                      title={`メイン曲を ${sp} に設定`}
+                                      }`}
+                                      title={`メイン曲を ${sp} に設定（適用ボタンで保存）`}
                                     >
                                       {sp}
                                     </button>
@@ -477,41 +553,41 @@ export default function MemberManagerView({ onOpenAuth }) {
                               {/* オモテ / ウラ トグルボタン */}
                               <button
                                 type="button"
-                                disabled={isAuthRequired || isUpdatingMain}
                                 onClick={() => {
                                   const nextSide = mainSide === 'オモテ' ? 'ウラ' : 'オモテ';
-                                  handleQuickUpdate(m, 'main', 'side', nextSide);
+                                  handleStageChange(m, 'main', 'side', nextSide);
                                 }}
                                 className={`px-2 py-0.5 text-[11px] font-medium rounded-lg border transition ${
                                   mainSide === 'ウラ'
                                     ? 'bg-purple-950/70 border-purple-800 text-purple-300 hover:bg-purple-900/80'
                                     : 'bg-emerald-950/70 border-emerald-800 text-emerald-300 hover:bg-emerald-900/80'
-                                } ${isUpdatingMain ? 'opacity-50 cursor-wait' : ''}`}
-                                title="クリックでメイン曲のオモテ/ウラを切り替え"
+                                }`}
+                                title="クリックでメイン曲のオモテ/ウラを切り替え（適用ボタンで保存）"
                               >
                                 {mainSide}
                               </button>
                             </div>
                           </td>
-                        <td className="p-3 text-right space-x-2">
-                          <button
-                            onClick={() => startEdit(m)}
-                            disabled={isAuthRequired}
-                            className="px-2.5 py-1 rounded bg-blue-900/60 hover:bg-blue-800 disabled:opacity-30 text-blue-300 text-xs font-medium transition"
-                          >
-                            ✏️ 編集
-                          </button>
-                          <button
-                            onClick={() => handleDelete(m)}
-                            disabled={isAuthRequired}
-                            className="px-2.5 py-1 rounded bg-red-900/60 hover:bg-red-800 disabled:opacity-30 text-red-300 text-xs font-medium transition"
-                          >
-                            🗑️ 削除
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+
+                          <td className="p-3 text-right space-x-2">
+                            <button
+                              onClick={() => startEdit(m)}
+                              disabled={isAuthRequired}
+                              className="px-2.5 py-1 rounded bg-blue-900/60 hover:bg-blue-800 disabled:opacity-30 text-blue-300 text-xs font-medium transition"
+                            >
+                              ✏️ 編集
+                            </button>
+                            <button
+                              onClick={() => handleDelete(m)}
+                              disabled={isAuthRequired}
+                              className="px-2.5 py-1 rounded bg-red-900/60 hover:bg-red-800 disabled:opacity-30 text-red-300 text-xs font-medium transition"
+                            >
+                              🗑️ 削除
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -680,6 +756,34 @@ export default function MemberManagerView({ onOpenAuth }) {
         </div>
 
       </div>
+
+      {/* スクロール時にもすぐ適用できるフローティング一括保存バー */}
+      {Object.keys(pendingChanges).length > 0 && (
+        <div className="fixed bottom-5 right-5 z-40 bg-[#081326] border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl flex items-center gap-4 backdrop-blur-md animate-bounce-short">
+          <div className="text-xs">
+            <span className="font-bold text-white block">⚡ {Object.keys(pendingChanges).length}件の変更を保留中</span>
+            <span className="text-[11px] text-gray-400">適用を押すとSupabaseにまとめて保存されます</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDiscardAll}
+              disabled={isSubmitting}
+              className="px-3 py-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs transition"
+            >
+              取り消す
+            </button>
+            <button
+              type="button"
+              onClick={handleApplyAll}
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-lg flex items-center gap-1.5"
+            >
+              {isSubmitting ? '保存中…' : '💾 まとめて適用'}
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

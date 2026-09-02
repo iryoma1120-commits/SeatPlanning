@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { parseExcelFile } from '../utils/parser';
-import { fetchPartMembers, upsertPartMember, deletePartMember, normalizeName } from '../services/memberService';
+import { fetchPartMembers, upsertPartMember, deletePartMember, bulkUpsertPartMembers, normalizeName } from '../services/memberService';
 import { useAuth } from './useAuth';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
@@ -67,6 +67,20 @@ export const SeatingProvider = ({ children }) => {
       setMsg({ text: `✅ ${memberData.name} の設定を保存しました`, type: "text-green-400" });
     } catch (err) {
       setMsg({ text: `❌ 保存に失敗しました: ${err.message}`, type: "text-red-400" });
+      throw err;
+    }
+  };
+
+  /**
+   * 複数メンバーの一括保存 (まとめて更新)
+   */
+  const saveMembersBulk = async (membersList) => {
+    try {
+      await bulkUpsertPartMembers(membersList);
+      await loadDbMembers();
+      setMsg({ text: `✅ ${membersList.length}名の設定をまとめて適用しました`, type: "text-green-400" });
+    } catch (err) {
+      setMsg({ text: `❌ 一括保存に失敗しました: ${err.message}`, type: "text-red-400" });
       throw err;
     }
   };
@@ -283,7 +297,7 @@ export const SeatingProvider = ({ children }) => {
   return (
     <SeatingContext.Provider value={{
       sessions, allMembers, dbMembers, pults, history, date, setDate, part, setPart, piece, setPiece,
-      availableParts, msg, setMsg, loadingMembers, loadDbMembers, saveMember, removeMember,
+      availableParts, msg, setMsg, loadingMembers, loadDbMembers, saveMember, saveMembersBulk, removeMember,
       loadFile, buildSeats, doSwap, doSwapPults, undo
     }}>
       {children}

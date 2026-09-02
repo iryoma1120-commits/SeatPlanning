@@ -106,34 +106,63 @@ export async function deletePartMember(id, part = null) {
 }
 
 /**
- * 複数メンバーの一括保存
+ * 複数メンバーの一括保存・更新 (Upsert)
  */
-export async function bulkSavePartMembers(members) {
+export async function bulkUpsertPartMembers(members) {
   if (!members || members.length === 0) return [];
 
-  const payloads = members.map(m => ({
-    part: m.part,
-    name: m.name,
-    name_normalized: normalizeName(m.name),
-    is_top: Boolean(m.is_top),
-    assignments: m.assignments || {},
-    updated_at: new Date().toISOString()
-  }));
+  const payloads = members.map(m => {
+    const p = {
+      part: m.part,
+      name: m.name,
+      name_normalized: normalizeName(m.name),
+      is_top: Boolean(m.is_top),
+      assignments: m.assignments || {},
+      updated_at: new Date().toISOString()
+    };
+    if (m.id && typeof m.id === 'string' && !m.id.startsWith('local-')) {
+      p.id = m.id;
+    }
+    return p;
+  });
 
   if (!isSupabaseConfigured || !supabase) {
-    const part = members[0]?.part || 'all';
-    localStorage.setItem(`seat_members_${part}`, JSON.stringify(payloads));
+    const key = `seat_members_${members[0]?.part || 'all'}`;
+    const list = JSON.parse(localStorage.getItem(key) || '[]');
+    payloads.forEach(p => {
+      const idx = list.findIndex(item => item.name_normalized === p.name_normalized);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...p };
+      } else {
+        list.push({ ...p, id: 'local-' + Date.now() });
+      }
+    });
+    localStorage.setItem(key, JSON.stringify(list));
     return payloads;
   }
 
+  // Supabase での一括 upsert
   const { data, error } = await supabase
     .from(TABLE_NAME)
-    .insert(payloads)
+    .upsert(payloads, { onConflict: 'part,name_normalized' })
     .select();
 
   if (error) {
-    console.error('[memberService] bulkSavePartMembers error:', error);
-    throw error;
+    console.warn('[memberService] batch upsert fallback to individual update:', error);
+    // onConflict が設定されていない場合の個別更新フォールバック
+    const results = [];
+    for (const m of members) {
+      const res = await upsertPartMember(m);
+      results.push(res);
+    }
+    return results;
   }
   return data;
+}
+
+/**
+ * 複数メンバーの一括保存 (互換用)
+ */
+export async function bulkSavePartMembers(members) {
+  return bulkUpsertPartMembers(members);
 }

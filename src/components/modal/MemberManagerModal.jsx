@@ -8,6 +8,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
     dbMembers, 
     allMembers, 
     saveMember, 
+    saveMembersBulk,
     removeMember, 
     loadDbMembers,
     loadingMembers 
@@ -17,6 +18,8 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
 
   const [selectedPart, setSelectedPart] = useState('Vn');
   const [editingMember, setEditingMember] = useState(null); // null: 新規, オブジェクト: 編集
+  const [pendingChanges, setPendingChanges] = useState({});
+
   const [formName, setFormName] = useState('');
   const [formPart, setFormPart] = useState('Vn');
   const [formIsTop, setFormIsTop] = useState(false);
@@ -25,7 +28,6 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   const [formMainSubPart, setFormMainSubPart] = useState('1st');
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [updatingKey, setUpdatingKey] = useState(null);
 
   const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
 
@@ -42,36 +44,56 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   // Supabaseが設定されていて未ログインの場合
   const isAuthRequired = isSupabaseConfigured && !user;
 
-  const handleQuickUpdate = async (member, pieceKey, field, value) => {
-    if (isAuthRequired) {
-      alert("変更を保存するにはログインが必要です。");
-      onOpenAuth && onOpenAuth();
-      return;
-    }
+  const handleStageChange = (member, pieceKey, field, value) => {
+    const key = member.id || member.name_normalized || member.name;
+    const currentObj = pendingChanges[key] || member;
+    const currentPieceConfig = currentObj.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
 
-    const currentPieceConfig = member.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
     const updatedPieceConfig = {
       ...currentPieceConfig,
       [field]: value,
     };
 
     const updatedAssignments = {
-      ...(member.assignments || {}),
+      ...(currentObj.assignments || {}),
       [pieceKey]: updatedPieceConfig,
     };
 
-    const targetKey = `${member.id || member.name}-${pieceKey}-${field}`;
-    setUpdatingKey(targetKey);
-
-    try {
-      await saveMember({
-        ...member,
+    setPendingChanges(prev => ({
+      ...prev,
+      [key]: {
+        ...currentObj,
         assignments: updatedAssignments,
-      });
+      }
+    }));
+  };
+
+  const handleApplyAll = async () => {
+    if (isAuthRequired) {
+      alert("変更を保存するにはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
+
+    const toSave = Object.values(pendingChanges);
+    if (toSave.length === 0) return;
+
+    setIsSubmitting(true);
+    try {
+      await saveMembersBulk(toSave);
+      setPendingChanges({});
     } catch (err) {
-      alert("更新エラー: " + err.message);
+      alert("一括適用エラー: " + err.message);
     } finally {
-      setUpdatingKey(null);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDiscardAll = () => {
+    if (Object.keys(pendingChanges).length > 0) {
+      if (window.confirm("未適用の変更を取り消しますか？")) {
+        setPendingChanges({});
+      }
     }
   };
 
@@ -263,6 +285,33 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
               </div>
             </div>
 
+            {/* 未適用の変更バー */}
+            {Object.keys(pendingChanges).length > 0 && (
+              <div className="mb-2.5 bg-gradient-to-r from-amber-950/90 to-blue-950/90 border border-amber-600 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-lg">
+                <span className="text-[11px] text-amber-200 font-medium">
+                  ⚡ <strong>{Object.keys(pendingChanges).length}件</strong> の変更が未適用です
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleDiscardAll}
+                    disabled={isSubmitting}
+                    className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px]"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyAll}
+                    disabled={isSubmitting}
+                    className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow"
+                  >
+                    {isSubmitting ? '保存中…' : '💾 適用して保存'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="border border-[#1e2f4d] rounded-xl flex-1 overflow-y-auto max-h-[380px] bg-[#060c18]">
               {loadingMembers ? (
                 <div className="p-4 text-center text-sm text-gray-400">読み込み中…</div>
@@ -274,7 +323,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-[#0f1d35] sticky top-0 border-b border-[#1e2f4d]">
+                  <thead className="bg-[#0f1d35] sticky top-0 border-b border-[#1e2f4d] z-10">
                     <tr>
                       <th className="p-2.5">パート</th>
                       <th className="p-2.5">氏名</th>
@@ -285,20 +334,27 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                   </thead>
                   <tbody>
                     {filteredDbMembers.map(m => {
-                      const maeSubPart = m.assignments?.mae?.sub_part || '1st';
-                      const maeSide = m.assignments?.mae?.side || 'オモテ';
-                      const mainSubPart = m.assignments?.main?.sub_part || '1st';
-                      const mainSide = m.assignments?.main?.side || 'オモテ';
+                      const memberKey = m.id || m.name_normalized || m.name;
+                      const activeMember = pendingChanges[memberKey] || m;
+                      const isPending = Boolean(pendingChanges[memberKey]);
 
-                      const isUpdatingMae = updatingKey?.startsWith(`${m.id || m.name}-mae`);
-                      const isUpdatingMain = updatingKey?.startsWith(`${m.id || m.name}-main`);
+                      const maeSubPart = activeMember.assignments?.mae?.sub_part || '1st';
+                      const maeSide = activeMember.assignments?.mae?.side || 'オモテ';
+                      const mainSubPart = activeMember.assignments?.main?.sub_part || '1st';
+                      const mainSide = activeMember.assignments?.main?.side || 'オモテ';
 
                       return (
-                        <tr key={m.id || m.name} className="border-b border-[#14233c] hover:bg-[#11203b]">
+                        <tr 
+                          key={memberKey} 
+                          className={`border-b border-[#14233c] hover:bg-[#11203b] ${
+                            isPending ? 'bg-amber-950/25 border-l-4 border-l-amber-500' : ''
+                          }`}
+                        >
                           <td className="p-2.5 font-bold text-blue-400">{m.part}</td>
                           <td className="p-2.5 font-medium whitespace-nowrap">
                             {m.name}
                             {m.is_top && <span className="ml-1 text-amber-400 font-bold">♪</span>}
+                            {isPending && <span className="ml-1 text-[10px] text-amber-400 font-bold">(未適用)</span>}
                           </td>
 
                           {/* 前曲・中曲（直接編集） */}
@@ -309,10 +365,13 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                                   <button
                                     key={sp}
                                     type="button"
-                                    disabled={isAuthRequired || isUpdatingMae}
-                                    onClick={() => handleQuickUpdate(m, 'mae', 'sub_part', sp)}
+                                    onClick={() => handleStageChange(m, 'mae', 'sub_part', sp)}
                                     className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                      maeSubPart === sp ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                                      maeSubPart === sp 
+                                        ? isPending && (m.assignments?.mae?.sub_part || '1st') !== sp 
+                                          ? 'bg-amber-600 text-white' 
+                                          : 'bg-blue-600 text-white' 
+                                        : 'text-gray-400 hover:text-white'
                                     }`}
                                   >
                                     {sp}
@@ -321,8 +380,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                               </div>
                               <button
                                 type="button"
-                                disabled={isAuthRequired || isUpdatingMae}
-                                onClick={() => handleQuickUpdate(m, 'mae', 'side', maeSide === 'オモテ' ? 'ウラ' : 'オモテ')}
+                                onClick={() => handleStageChange(m, 'mae', 'side', maeSide === 'オモテ' ? 'ウラ' : 'オモテ')}
                                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                                   maeSide === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
                                 }`}
@@ -340,10 +398,13 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                                   <button
                                     key={sp}
                                     type="button"
-                                    disabled={isAuthRequired || isUpdatingMain}
-                                    onClick={() => handleQuickUpdate(m, 'main', 'sub_part', sp)}
+                                    onClick={() => handleStageChange(m, 'main', 'sub_part', sp)}
                                     className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                      mainSubPart === sp ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                                      mainSubPart === sp 
+                                        ? isPending && (m.assignments?.main?.sub_part || '1st') !== sp 
+                                          ? 'bg-amber-600 text-white' 
+                                          : 'bg-blue-600 text-white' 
+                                        : 'text-gray-400 hover:text-white'
                                     }`}
                                   >
                                     {sp}
@@ -352,8 +413,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                               </div>
                               <button
                                 type="button"
-                                disabled={isAuthRequired || isUpdatingMain}
-                                onClick={() => handleQuickUpdate(m, 'main', 'side', mainSide === 'オモテ' ? 'ウラ' : 'オモテ')}
+                                onClick={() => handleStageChange(m, 'main', 'side', mainSide === 'オモテ' ? 'ウラ' : 'オモテ')}
                                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                                   mainSide === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
                                 }`}
