@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { parseExcelFile } from '../utils/parser';
 import { fetchPartMembers, upsertPartMember, deletePartMember, normalizeName } from '../services/memberService';
+import { useAuth } from './useAuth';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 const SeatingContext = createContext();
 export const useSeatingContext = () => useContext(SeatingContext);
@@ -9,6 +11,8 @@ export const useSeatingContext = () => useContext(SeatingContext);
  * 座席配置のメインロジックを管理するコンテキストプロバイダー
  */
 export const SeatingProvider = ({ children }) => {
+  const { user } = useAuth();
+
   // --- 状態定義 ---
   const [sessions, setSessions] = useState([]);    // 練習日程リスト
   const [allMembers, setAllMembers] = useState([]); // 全メンバーデータ (Excel読込結果)
@@ -31,6 +35,13 @@ export const SeatingProvider = ({ children }) => {
    * Supabaseからパートメンバー設定を取得
    */
   const loadDbMembers = useCallback(async () => {
+    // Supabase有効かつ未認証の場合はフェッチをスキップして空配列にする
+    if (isSupabaseConfigured && !user) {
+      setDbMembers([]);
+      setLoadingMembers(false);
+      return;
+    }
+
     setLoadingMembers(true);
     try {
       const data = await fetchPartMembers();
@@ -40,7 +51,7 @@ export const SeatingProvider = ({ children }) => {
     } finally {
       setLoadingMembers(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     loadDbMembers();

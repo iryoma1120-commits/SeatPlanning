@@ -17,18 +17,37 @@ CREATE INDEX IF NOT EXISTS idx_part_members_name_normalized ON public.part_membe
 -- 3. RLS（行単位セキュリティ）の有効化
 ALTER TABLE public.part_members ENABLE ROW LEVEL SECURITY;
 
--- 開発・簡易運用のための全許可ポリシー（必要に応じて認証制限等に変更可能）
-CREATE POLICY "Allow public read part_members" 
-  ON public.part_members FOR SELECT USING (true);
+-- 既存の古いポリシーを削除（再実行時のため）
+DROP POLICY IF EXISTS "Allow public read part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow public insert part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow public update part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow public delete part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow authenticated read part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow authenticated insert part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow authenticated update part_members" ON public.part_members;
+DROP POLICY IF EXISTS "Allow authenticated delete part_members" ON public.part_members;
 
-CREATE POLICY "Allow public insert part_members" 
-  ON public.part_members FOR INSERT WITH CHECK (true);
+-- 【重要】認証済みアカウント（authenticatedロール）のみアクセスを許可
+CREATE POLICY "Allow authenticated read part_members" 
+  ON public.part_members FOR SELECT 
+  TO authenticated 
+  USING (true);
 
-CREATE POLICY "Allow public update part_members" 
-  ON public.part_members FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "Allow authenticated insert part_members" 
+  ON public.part_members FOR INSERT 
+  TO authenticated 
+  WITH CHECK (true);
 
-CREATE POLICY "Allow public delete part_members" 
-  ON public.part_members FOR DELETE USING (true);
+CREATE POLICY "Allow authenticated update part_members" 
+  ON public.part_members FOR UPDATE 
+  TO authenticated 
+  USING (true) 
+  WITH CHECK (true);
+
+CREATE POLICY "Allow authenticated delete part_members" 
+  ON public.part_members FOR DELETE 
+  TO authenticated 
+  USING (true);
 
 -- 4. 旧 constants.js の初期データ（Vnパート）投入
 INSERT INTO public.part_members (part, name, name_normalized, is_top, assignments)

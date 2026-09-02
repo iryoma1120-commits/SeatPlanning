@@ -1,4 +1,5 @@
 import React from 'react';
+import { AuthProvider } from './hooks/useAuth';
 import { SeatingProvider } from './hooks/useSeating';
 import { DragDropProvider } from './hooks/useDragDrop';
 import Header from './components/layout/Header';
@@ -8,14 +9,16 @@ import Ghost from './components/shared/Ghost';
 
 function App() {
   return (
-    <SeatingProvider>
-      <DragDropProvider>
-        <Header />
-        <Panel />
-        <Stage />
-        <Ghost />
-      </DragDropProvider>
-    </SeatingProvider>
+    <AuthProvider>
+      <SeatingProvider>
+        <DragDropProvider>
+          <Header />
+          <Panel />
+          <Stage />
+          <Ghost />
+        </DragDropProvider>
+      </SeatingProvider>
+    </AuthProvider>
   );
 }
 

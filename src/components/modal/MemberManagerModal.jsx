@@ -1,17 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { useSeatingContext } from '../../hooks/useSeating';
+import { useAuth } from '../../hooks/useAuth';
 import { isSupabaseConfigured } from '../../lib/supabaseClient';
 
-export default function MemberManagerModal({ isOpen, onClose }) {
+export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   const { 
     dbMembers, 
     allMembers, 
-    availableParts, 
     saveMember, 
     removeMember, 
     loadDbMembers,
     loadingMembers 
   } = useSeatingContext();
+
+  const { user } = useAuth();
 
   const [selectedPart, setSelectedPart] = useState('Vn');
   const [editingMember, setEditingMember] = useState(null); // null: 新規, オブジェクト: 編集
@@ -31,7 +33,14 @@ export default function MemberManagerModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  // Supabaseが設定されていて未ログインの場合
+  const isAuthRequired = isSupabaseConfigured && !user;
+
   const startEdit = (m) => {
+    if (isAuthRequired) {
+      alert("編集するにはログインが必要です。");
+      return;
+    }
     setEditingMember(m);
     setFormName(m.name);
     setFormPart(m.part || 'Vn');
@@ -55,6 +64,11 @@ export default function MemberManagerModal({ isOpen, onClose }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isAuthRequired) {
+      alert("データベースへの保存にはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
     if (!formName.trim()) return;
 
     setIsSubmitting(true);
@@ -78,6 +92,11 @@ export default function MemberManagerModal({ isOpen, onClose }) {
   };
 
   const handleDelete = async (m) => {
+    if (isAuthRequired) {
+      alert("削除するにはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
     if (!window.confirm(`${m.name} を削除しますか？`)) return;
     try {
       await removeMember(m.id, m.part);
@@ -89,6 +108,11 @@ export default function MemberManagerModal({ isOpen, onClose }) {
 
   // Excelから未登録のメンバーを一括登録する補助機能
   const handleImportFromExcel = async () => {
+    if (isAuthRequired) {
+      alert("データベースへの取り込みにはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
     if (allMembers.length === 0) {
       alert("先にExcelファイルを読み込んでください。");
       return;
@@ -134,11 +158,18 @@ export default function MemberManagerModal({ isOpen, onClose }) {
             <span className="text-xl">👥</span>
             <h2 className="text-lg font-bold">パートメンバー管理 (Supabase)</h2>
             <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-              isSupabaseConfigured 
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' 
-                : 'bg-amber-950/80 text-amber-400 border border-amber-800'
+              !isSupabaseConfigured 
+                ? 'bg-amber-950/80 text-amber-400 border border-amber-800'
+                : user
+                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800'
+                  : 'bg-red-950/80 text-red-400 border border-red-800'
             }`}>
-              {isSupabaseConfigured ? '● Supabase接続中' : '▲ ローカル保存モード (.env未設定)'}
+              {!isSupabaseConfigured
+                ? '▲ ローカル保存モード (.env未設定)'
+                : user
+                  ? `● ログイン中 (${user.email})`
+                  : '🔒 未ログイン（閲覧・保存制限中）'
+              }
             </span>
           </div>
           <button 
@@ -148,6 +179,25 @@ export default function MemberManagerModal({ isOpen, onClose }) {
             ✕
           </button>
         </div>
+
+        {/* 認証警告バナー（未ログイン時） */}
+        {isAuthRequired && (
+          <div className="bg-gradient-to-r from-red-950/90 to-amber-950/90 border-b border-red-900/60 px-6 py-3 flex items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-2 text-red-200">
+              <span className="text-base">🔒</span>
+              <span>
+                <strong>データベースへのアクセスは認証済みアカウントのみに制限されています。</strong>
+                データの取得・編集・保存を行うにはログインしてください。
+              </span>
+            </div>
+            <button
+              onClick={() => onOpenAuth && onOpenAuth()}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1.5 rounded-lg whitespace-nowrap shadow transition"
+            >
+              🔑 ログインする
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 flex flex-col md:flex-row gap-6">
@@ -177,7 +227,9 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                 <div className="p-4 text-center text-sm text-gray-400">読み込み中…</div>
               ) : filteredDbMembers.length === 0 ? (
                 <div className="p-6 text-center text-sm text-gray-500">
-                  登録されたメンバーはいません。
+                  {isAuthRequired 
+                    ? 'ログインすると登録済みメンバー一覧が表示されます。' 
+                    : '登録されたメンバーはいません。'}
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse">
@@ -207,13 +259,15 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                         <td className="p-2.5 text-right space-x-1">
                           <button 
                             onClick={() => startEdit(m)}
-                            className="px-2 py-0.5 rounded bg-blue-900/60 hover:bg-blue-800 text-blue-300 text-[11px]"
+                            disabled={isAuthRequired}
+                            className="px-2 py-0.5 rounded bg-blue-900/60 hover:bg-blue-800 disabled:opacity-30 text-blue-300 text-[11px]"
                           >
                             編集
                           </button>
                           <button 
                             onClick={() => handleDelete(m)}
-                            className="px-2 py-0.5 rounded bg-red-900/60 hover:bg-red-800 text-red-300 text-[11px]"
+                            disabled={isAuthRequired}
+                            className="px-2 py-0.5 rounded bg-red-900/60 hover:bg-red-800 disabled:opacity-30 text-red-300 text-[11px]"
                           >
                             削除
                           </button>
@@ -228,7 +282,7 @@ export default function MemberManagerModal({ isOpen, onClose }) {
             <div className="mt-3 flex gap-2">
               <button
                 onClick={handleImportFromExcel}
-                disabled={isSubmitting || allMembers.length === 0}
+                disabled={isSubmitting || allMembers.length === 0 || isAuthRequired}
                 className="flex-1 bg-[#122b45] hover:bg-[#1c3d61] disabled:opacity-40 text-blue-300 text-xs py-2 px-3 rounded-lg border border-blue-800/60 font-medium transition"
               >
                 📥 Excelから未登録者を取り込む ({allMembers.length}名中)
@@ -264,7 +318,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                   <select 
                     value={formPart} 
                     onChange={e => setFormPart(e.target.value)}
-                    className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-white"
+                    disabled={isAuthRequired}
+                    className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-white disabled:opacity-40"
                   >
                     {['Vn', 'Va', 'Vc', 'Cb', 'Fl', 'Ob', 'Cl', 'Fg', 'Hr', 'Tp', 'Tb', 'Perc'].map(p => (
                       <option key={p} value={p}>{p}</option>
@@ -279,7 +334,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                     placeholder="例: 山田 太郎"
                     value={formName}
                     onChange={e => setFormName(e.target.value)}
-                    className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-white placeholder-gray-600"
+                    disabled={isAuthRequired}
+                    className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-white placeholder-gray-600 disabled:opacity-40"
                   />
                 </div>
               </div>
@@ -290,6 +346,7 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                   id="formIsTop"
                   checked={formIsTop}
                   onChange={e => setFormIsTop(e.target.checked)}
+                  disabled={isAuthRequired}
                   className="rounded bg-[#060d1c] border-[#243650] text-blue-500"
                 />
                 <label htmlFor="formIsTop" className="text-gray-300 select-none">
@@ -306,7 +363,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                     <select 
                       value={formMaeSubPart} 
                       onChange={e => setFormMaeSubPart(e.target.value)}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white"
+                      disabled={isAuthRequired}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
                     >
                       <option value="1st">1st</option>
                       <option value="2nd">2nd</option>
@@ -318,7 +376,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                     <select 
                       value={formMaeSide} 
                       onChange={e => setFormMaeSide(e.target.value)}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white"
+                      disabled={isAuthRequired}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
                     >
                       <option value="オモテ">オモテ (外側)</option>
                       <option value="ウラ">ウラ (内側)</option>
@@ -336,7 +395,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                     <select 
                       value={formMainSubPart} 
                       onChange={e => setFormMainSubPart(e.target.value)}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white"
+                      disabled={isAuthRequired}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
                     >
                       <option value="1st">1st</option>
                       <option value="2nd">2nd</option>
@@ -348,7 +408,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                     <select 
                       value={formMainSide} 
                       onChange={e => setFormMainSide(e.target.value)}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white"
+                      disabled={isAuthRequired}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
                     >
                       <option value="オモテ">オモテ (外側)</option>
                       <option value="ウラ">ウラ (内側)</option>
@@ -369,8 +430,8 @@ export default function MemberManagerModal({ isOpen, onClose }) {
                 )}
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold transition shadow"
+                  disabled={isSubmitting || isAuthRequired}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold transition shadow"
                 >
                   {isSubmitting ? '保存中…' : editingMember ? '更新してSupabaseに保存' : 'Supabaseに新規保存'}
                 </button>
@@ -382,7 +443,7 @@ export default function MemberManagerModal({ isOpen, onClose }) {
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-[#1b2a47] bg-[#070e1c] flex justify-between items-center text-xs text-gray-400">
-          <div>💡 Supabaseテーブル: <code className="text-blue-300">part_members</code> (全パートの曲別設定を保存)</div>
+          <div>💡 RLSポリシー: <code className="text-blue-300">authenticated</code> (認証済みアカウントのみアクセス可能)</div>
           <button 
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-[#1a2c47] hover:bg-[#253d61] text-white transition font-medium"
