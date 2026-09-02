@@ -3,20 +3,14 @@ import { useSeatingContext } from '../../hooks/useSeating';
 import { useAuth } from '../../hooks/useAuth';
 import { isSupabaseConfigured } from '../../lib/supabaseClient';
 
+export const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
+
 const PART_OPTIONS = [
-  { id: 'All', label: 'すべて' },
-  { id: 'Vn', label: '1st/2nd ヴァイオリン (Vn)' },
+  { id: 'All', label: 'すべて (弦4パート)' },
+  { id: 'Vn', label: 'ヴァイオリン (Vn)' },
   { id: 'Va', label: 'ヴィオラ (Va)' },
   { id: 'Vc', label: 'チェロ (Vc)' },
   { id: 'Cb', label: 'コントラバス (Cb)' },
-  { id: 'Fl', label: 'フルート (Fl)' },
-  { id: 'Ob', label: 'オーボエ (Ob)' },
-  { id: 'Cl', label: 'クラリネット (Cl)' },
-  { id: 'Fg', label: 'ファゴット (Fg)' },
-  { id: 'Hr', label: 'ホルン (Hr)' },
-  { id: 'Tp', label: 'トランペット (Tp)' },
-  { id: 'Tb', label: 'トロンボーン (Tb)' },
-  { id: 'Perc', label: '打楽器 (Perc)' },
 ];
 
 export default function MemberManagerView({ onOpenAuth }) {
@@ -45,9 +39,11 @@ export default function MemberManagerView({ onOpenAuth }) {
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // フィルタリング
+  // フィルタリング（Vn, Va, Vc, Cb のみを表示対象とする）
   const filteredMembers = useMemo(() => {
     return dbMembers.filter(m => {
+      // 弦4パート以外は表示しない
+      if (!ALLOWED_PARTS.includes(m.part)) return false;
       const matchPart = selectedPart === 'All' ? true : m.part === selectedPart;
       const matchSearch = searchQuery.trim() === '' || 
         m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -149,14 +145,16 @@ export default function MemberManagerView({ onOpenAuth }) {
       return;
     }
     const currentNames = new Set(dbMembers.map(m => m.name_normalized));
-    const toImport = allMembers.filter(m => !currentNames.has(m.nameNormalized));
+    const toImport = allMembers.filter(m => 
+      ALLOWED_PARTS.includes(m.part) && !currentNames.has(m.nameNormalized)
+    );
 
     if (toImport.length === 0) {
-      alert("Excel内のすべてのメンバーは既に登録されています。");
+      alert("出欠表内の弦4パート（Vn, Va, Vc, Cb）の全メンバーは既に登録されています。");
       return;
     }
 
-    if (!window.confirm(`出欠表から未登録の ${toImport.length} 名を取り込んで登録しますか？`)) return;
+    if (!window.confirm(`出欠表から未登録の弦楽器メンバー ${toImport.length} 名を取り込んで登録しますか？`)) return;
 
     setIsSubmitting(true);
     try {
@@ -424,7 +422,7 @@ export default function MemberManagerView({ onOpenAuth }) {
                   disabled={isAuthRequired}
                   className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-3 py-2 text-white disabled:opacity-40"
                 >
-                  {['Vn', 'Va', 'Vc', 'Cb', 'Fl', 'Ob', 'Cl', 'Fg', 'Hr', 'Tp', 'Tb', 'Perc'].map(p => (
+                  {ALLOWED_PARTS.map(p => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>

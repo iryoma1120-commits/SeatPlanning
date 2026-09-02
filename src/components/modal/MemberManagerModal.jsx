@@ -26,9 +26,14 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 選択パートでフィルタリングしたメンバー一覧
+const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
+
+  // 選択パートでフィルタリングしたメンバー一覧（Vn, Va, Vc, Cb のみ）
   const filteredDbMembers = useMemo(() => {
-    return dbMembers.filter(m => (selectedPart === 'All' ? true : m.part === selectedPart));
+    return dbMembers.filter(m => {
+      if (!ALLOWED_PARTS.includes(m.part)) return false;
+      return selectedPart === 'All' ? true : m.part === selectedPart;
+    });
   }, [dbMembers, selectedPart]);
 
   if (!isOpen) return null;
@@ -118,14 +123,16 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
       return;
     }
     const currentNames = new Set(dbMembers.map(m => m.name_normalized));
-    const toImport = allMembers.filter(m => !currentNames.has(m.nameNormalized));
+    const toImport = allMembers.filter(m => 
+      ALLOWED_PARTS.includes(m.part) && !currentNames.has(m.nameNormalized)
+    );
 
     if (toImport.length === 0) {
-      alert("Excel内の全メンバーは既に登録済みです。");
+      alert("出欠表内の弦4パート（Vn, Va, Vc, Cb）の全メンバーは既に登録済みです。");
       return;
     }
 
-    if (!window.confirm(`Excelから未登録の ${toImport.length} 名を取り込みますか？`)) return;
+    if (!window.confirm(`出欠表から未登録の弦楽器メンバー ${toImport.length} 名を取り込みますか？`)) return;
 
     setIsSubmitting(true);
     try {
@@ -206,7 +213,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
           <div className="w-full md:w-1/2 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <div className="flex gap-1.5 flex-wrap">
-                {['All', 'Vn', 'Va', 'Vc', 'Cb', 'Fl', 'Ob', 'Cl', 'Fg', 'Hr', 'Tp', 'Tb', 'Perc'].map(p => (
+                {['All', 'Vn', 'Va', 'Vc', 'Cb'].map(p => (
                   <button
                     key={p}
                     onClick={() => { setSelectedPart(p); if (p !== 'All') setFormPart(p); }}
@@ -216,7 +223,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                         : 'bg-[#15233c] text-gray-300 hover:bg-[#1f3358]'
                     }`}
                   >
-                    {p}
+                    {p === 'All' ? 'すべて' : p}
                   </button>
                 ))}
               </div>
@@ -321,7 +328,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                     disabled={isAuthRequired}
                     className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2.5 py-1.5 text-white disabled:opacity-40"
                   >
-                    {['Vn', 'Va', 'Vc', 'Cb', 'Fl', 'Ob', 'Cl', 'Fg', 'Hr', 'Tp', 'Tb', 'Perc'].map(p => (
+                    {ALLOWED_PARTS.map(p => (
                       <option key={p} value={p}>{p}</option>
                     ))}
                   </select>
