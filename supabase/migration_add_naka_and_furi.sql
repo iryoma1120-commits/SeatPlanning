@@ -16,7 +16,10 @@ WHERE assignments->'naka' IS NULL;
 
 -- 2. Supabaseダッシュボード（Table Editor / SQL Editor）から
 --    前曲・中曲・メイン曲のパート（1st / 2nd / 降り）を一覧で確認できるビューを作成
-CREATE OR REPLACE VIEW public.v_part_members_pieces AS
+--    ※ security_invoker = true を指定し、未認証アクセスを防ぎます
+CREATE OR REPLACE VIEW public.v_part_members_pieces
+WITH (security_invoker = true)
+AS
 SELECT 
   id,
   part,
@@ -31,6 +34,10 @@ SELECT
   updated_at
 FROM public.part_members
 ORDER BY part, name;
+
+-- 未ログイン（anon）および public からの閲覧権限を剥奪し、認証済み（authenticated）のみ許可
+REVOKE ALL ON public.v_part_members_pieces FROM anon, public;
+GRANT SELECT ON public.v_part_members_pieces TO authenticated;
 
 
 -- 3. 【動作確認用】ビューの内容を確認

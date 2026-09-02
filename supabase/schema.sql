@@ -85,7 +85,10 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 -- 5. 【便利ビュー】Supabaseダッシュボードで前・中・メインのパート（1st/2nd/降り）を一覧確認できるビュー
-CREATE OR REPLACE VIEW public.v_part_members_pieces AS
+-- ※ security_invoker = true を設定し、基底テーブルの RLS（認証済みユーザー限定）を適用
+CREATE OR REPLACE VIEW public.v_part_members_pieces
+WITH (security_invoker = true)
+AS
 SELECT 
   id,
   part,
@@ -99,3 +102,7 @@ SELECT
   assignments->'main'->>'side'     AS main_side,
   updated_at
 FROM public.part_members;
+
+-- 未ログイン（anon）および public からの閲覧権限を剥奪し、ログイン済み（authenticated）のみに制限
+REVOKE ALL ON public.v_part_members_pieces FROM anon, public;
+GRANT SELECT ON public.v_part_members_pieces TO authenticated;
