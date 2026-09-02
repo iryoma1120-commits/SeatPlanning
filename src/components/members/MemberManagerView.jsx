@@ -38,6 +38,7 @@ export default function MemberManagerView({ onOpenAuth }) {
   const [formMainSubPart, setFormMainSubPart] = useState('1st');
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [updatingKey, setUpdatingKey] = useState(null); // クイック更新中の項目キー
 
   // フィルタリング（Vn, Va, Vc, Cb のみを表示対象とする）
   const filteredMembers = useMemo(() => {
@@ -60,6 +61,42 @@ export default function MemberManagerView({ onOpenAuth }) {
   }, [filteredMembers]);
 
   const isAuthRequired = isSupabaseConfigured && !user;
+
+  /**
+   * リスト上から直接パート分け(1st/2nd)やオモテ/ウラを即座に更新・保存する
+   */
+  const handleQuickUpdate = async (member, pieceKey, field, value) => {
+    if (isAuthRequired) {
+      alert("変更を保存するにはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
+
+    const currentPieceConfig = member.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
+    const updatedPieceConfig = {
+      ...currentPieceConfig,
+      [field]: value,
+    };
+
+    const updatedAssignments = {
+      ...(member.assignments || {}),
+      [pieceKey]: updatedPieceConfig,
+    };
+
+    const targetKey = `${member.id || member.name}-${pieceKey}-${field}`;
+    setUpdatingKey(targetKey);
+
+    try {
+      await saveMember({
+        ...member,
+        assignments: updatedAssignments,
+      });
+    } catch (err) {
+      alert("更新エラー: " + err.message);
+    } finally {
+      setUpdatingKey(null);
+    }
+  };
 
   const startEdit = (m) => {
     if (isAuthRequired) {
@@ -323,50 +360,139 @@ export default function MemberManagerView({ onOpenAuth }) {
                       <th className="p-3">パート</th>
                       <th className="p-3">氏名</th>
                       <th className="p-3">役職</th>
-                      <th className="p-3">前曲・中曲</th>
-                      <th className="p-3">メイン曲</th>
+                      <th className="p-3 min-w-[150px]">
+                        前曲・中曲
+                        <span className="block text-[10px] font-normal text-blue-400/80">※クリックで直接変更</span>
+                      </th>
+                      <th className="p-3 min-w-[150px]">
+                        メイン曲
+                        <span className="block text-[10px] font-normal text-blue-400/80">※クリックで直接変更</span>
+                      </th>
                       <th className="p-3 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#132238]">
-                    {filteredMembers.map(m => (
-                      <tr 
-                        key={m.id || m.name} 
-                        className={`hover:bg-[#0c182c] transition ${
-                          editingMember?.id === m.id ? 'bg-blue-950/40 border-l-4 border-l-blue-500' : ''
-                        }`}
-                      >
-                        <td className="p-3 font-bold text-blue-400">{m.part}</td>
-                        <td className="p-3 font-medium text-white text-[13px]">
-                          {m.name}
-                        </td>
-                        <td className="p-3">
-                          {m.is_top ? (
-                            <span className="bg-amber-950/80 text-amber-300 border border-amber-700/60 px-2 py-0.5 rounded-full text-[11px] font-bold">
-                              ♪ 首席/トップ
-                            </span>
-                          ) : (
-                            <span className="text-gray-500">-</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-gray-300">
-                          {m.assignments?.mae ? (
-                            <span className="bg-[#122035] px-2 py-1 rounded border border-[#1e3455]">
-                              {m.assignments.mae.sub_part} / {m.assignments.mae.side}
-                            </span>
-                          ) : (
-                            <span className="text-gray-500">-</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-gray-300">
-                          {m.assignments?.main ? (
-                            <span className="bg-[#122035] px-2 py-1 rounded border border-[#1e3455]">
-                              {m.assignments.main.sub_part} / {m.assignments.main.side}
-                            </span>
-                          ) : (
-                            <span className="text-gray-500">-</span>
-                          )}
-                        </td>
+                    {filteredMembers.map(m => {
+                      const maeSubPart = m.assignments?.mae?.sub_part || '1st';
+                      const maeSide = m.assignments?.mae?.side || 'オモテ';
+                      const mainSubPart = m.assignments?.main?.sub_part || '1st';
+                      const mainSide = m.assignments?.main?.side || 'オモテ';
+
+                      const isUpdatingMae = updatingKey?.startsWith(`${m.id || m.name}-mae`);
+                      const isUpdatingMain = updatingKey?.startsWith(`${m.id || m.name}-main`);
+
+                      return (
+                        <tr 
+                          key={m.id || m.name} 
+                          className={`hover:bg-[#0c182c] transition ${
+                            editingMember?.id === m.id ? 'bg-blue-950/40 border-l-4 border-l-blue-500' : ''
+                          }`}
+                        >
+                          <td className="p-3 font-bold text-blue-400">{m.part}</td>
+                          <td className="p-3 font-medium text-white text-[13px] whitespace-nowrap">
+                            {m.name}
+                          </td>
+                          <td className="p-3">
+                            {m.is_top ? (
+                              <span className="bg-amber-950/80 text-amber-300 border border-amber-700/60 px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap">
+                                ♪ 首席
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
+                          </td>
+
+                          {/* 前曲・中曲（直接編集） */}
+                          <td className="p-3">
+                            <div className="flex items-center gap-1.5 flex-nowrap">
+                              {/* 1st / 2nd トグルボタン */}
+                              <div className="inline-flex rounded-lg border border-[#223859] bg-[#060e1c] p-0.5 shadow-inner">
+                                {['1st', '2nd'].map(sp => {
+                                  const isSelected = maeSubPart === sp;
+                                  return (
+                                    <button
+                                      key={sp}
+                                      type="button"
+                                      disabled={isAuthRequired || isUpdatingMae}
+                                      onClick={() => handleQuickUpdate(m, 'mae', 'sub_part', sp)}
+                                      className={`px-2 py-0.5 text-xs font-bold rounded transition ${
+                                        isSelected
+                                          ? 'bg-blue-600 text-white shadow'
+                                          : 'text-gray-400 hover:text-white hover:bg-[#122238]'
+                                      } ${isUpdatingMae ? 'opacity-50 cursor-wait' : ''}`}
+                                      title={`前曲を ${sp} に設定`}
+                                    >
+                                      {sp}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* オモテ / ウラ トグルボタン */}
+                              <button
+                                type="button"
+                                disabled={isAuthRequired || isUpdatingMae}
+                                onClick={() => {
+                                  const nextSide = maeSide === 'オモテ' ? 'ウラ' : 'オモテ';
+                                  handleQuickUpdate(m, 'mae', 'side', nextSide);
+                                }}
+                                className={`px-2 py-0.5 text-[11px] font-medium rounded-lg border transition ${
+                                  maeSide === 'ウラ'
+                                    ? 'bg-purple-950/70 border-purple-800 text-purple-300 hover:bg-purple-900/80'
+                                    : 'bg-emerald-950/70 border-emerald-800 text-emerald-300 hover:bg-emerald-900/80'
+                                } ${isUpdatingMae ? 'opacity-50 cursor-wait' : ''}`}
+                                title="クリックで前曲のオモテ/ウラを切り替え"
+                              >
+                                {maeSide}
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* メイン曲（直接編集） */}
+                          <td className="p-3">
+                            <div className="flex items-center gap-1.5 flex-nowrap">
+                              {/* 1st / 2nd トグルボタン */}
+                              <div className="inline-flex rounded-lg border border-[#223859] bg-[#060e1c] p-0.5 shadow-inner">
+                                {['1st', '2nd'].map(sp => {
+                                  const isSelected = mainSubPart === sp;
+                                  return (
+                                    <button
+                                      key={sp}
+                                      type="button"
+                                      disabled={isAuthRequired || isUpdatingMain}
+                                      onClick={() => handleQuickUpdate(m, 'main', 'sub_part', sp)}
+                                      className={`px-2 py-0.5 text-xs font-bold rounded transition ${
+                                        isSelected
+                                          ? 'bg-blue-600 text-white shadow'
+                                          : 'text-gray-400 hover:text-white hover:bg-[#122238]'
+                                      } ${isUpdatingMain ? 'opacity-50 cursor-wait' : ''}`}
+                                      title={`メイン曲を ${sp} に設定`}
+                                    >
+                                      {sp}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              {/* オモテ / ウラ トグルボタン */}
+                              <button
+                                type="button"
+                                disabled={isAuthRequired || isUpdatingMain}
+                                onClick={() => {
+                                  const nextSide = mainSide === 'オモテ' ? 'ウラ' : 'オモテ';
+                                  handleQuickUpdate(m, 'main', 'side', nextSide);
+                                }}
+                                className={`px-2 py-0.5 text-[11px] font-medium rounded-lg border transition ${
+                                  mainSide === 'ウラ'
+                                    ? 'bg-purple-950/70 border-purple-800 text-purple-300 hover:bg-purple-900/80'
+                                    : 'bg-emerald-950/70 border-emerald-800 text-emerald-300 hover:bg-emerald-900/80'
+                                } ${isUpdatingMain ? 'opacity-50 cursor-wait' : ''}`}
+                                title="クリックでメイン曲のオモテ/ウラを切り替え"
+                              >
+                                {mainSide}
+                              </button>
+                            </div>
+                          </td>
                         <td className="p-3 text-right space-x-2">
                           <button
                             onClick={() => startEdit(m)}
@@ -384,7 +510,8 @@ export default function MemberManagerView({ onOpenAuth }) {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               )}

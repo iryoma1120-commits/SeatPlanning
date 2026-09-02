@@ -25,8 +25,9 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   const [formMainSubPart, setFormMainSubPart] = useState('1st');
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [updatingKey, setUpdatingKey] = useState(null);
 
-const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
+  const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
 
   // 選択パートでフィルタリングしたメンバー一覧（Vn, Va, Vc, Cb のみ）
   const filteredDbMembers = useMemo(() => {
@@ -40,6 +41,39 @@ const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
 
   // Supabaseが設定されていて未ログインの場合
   const isAuthRequired = isSupabaseConfigured && !user;
+
+  const handleQuickUpdate = async (member, pieceKey, field, value) => {
+    if (isAuthRequired) {
+      alert("変更を保存するにはログインが必要です。");
+      onOpenAuth && onOpenAuth();
+      return;
+    }
+
+    const currentPieceConfig = member.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
+    const updatedPieceConfig = {
+      ...currentPieceConfig,
+      [field]: value,
+    };
+
+    const updatedAssignments = {
+      ...(member.assignments || {}),
+      [pieceKey]: updatedPieceConfig,
+    };
+
+    const targetKey = `${member.id || member.name}-${pieceKey}-${field}`;
+    setUpdatingKey(targetKey);
+
+    try {
+      await saveMember({
+        ...member,
+        assignments: updatedAssignments,
+      });
+    } catch (err) {
+      alert("更新エラー: " + err.message);
+    } finally {
+      setUpdatingKey(null);
+    }
+  };
 
   const startEdit = (m) => {
     if (isAuthRequired) {
@@ -244,43 +278,110 @@ const ALLOWED_PARTS = ['Vn', 'Va', 'Vc', 'Cb'];
                     <tr>
                       <th className="p-2.5">パート</th>
                       <th className="p-2.5">氏名</th>
-                      <th className="p-2.5">前曲</th>
-                      <th className="p-2.5">メイン曲</th>
+                      <th className="p-2.5 min-w-[130px]">前曲</th>
+                      <th className="p-2.5 min-w-[130px]">メイン曲</th>
                       <th className="p-2.5 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDbMembers.map(m => (
-                      <tr key={m.id || m.name} className="border-b border-[#14233c] hover:bg-[#11203b]">
-                        <td className="p-2.5 font-bold text-blue-400">{m.part}</td>
-                        <td className="p-2.5 font-medium">
-                          {m.name}
-                          {m.is_top && <span className="ml-1 text-amber-400 font-bold">♪</span>}
-                        </td>
-                        <td className="p-2.5 text-gray-400">
-                          {m.assignments?.mae ? `${m.assignments.mae.sub_part}/${m.assignments.mae.side}` : '-'}
-                        </td>
-                        <td className="p-2.5 text-gray-400">
-                          {m.assignments?.main ? `${m.assignments.main.sub_part}/${m.assignments.main.side}` : '-'}
-                        </td>
-                        <td className="p-2.5 text-right space-x-1">
-                          <button 
-                            onClick={() => startEdit(m)}
-                            disabled={isAuthRequired}
-                            className="px-2 py-0.5 rounded bg-blue-900/60 hover:bg-blue-800 disabled:opacity-30 text-blue-300 text-[11px]"
-                          >
-                            編集
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(m)}
-                            disabled={isAuthRequired}
-                            className="px-2 py-0.5 rounded bg-red-900/60 hover:bg-red-800 disabled:opacity-30 text-red-300 text-[11px]"
-                          >
-                            削除
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredDbMembers.map(m => {
+                      const maeSubPart = m.assignments?.mae?.sub_part || '1st';
+                      const maeSide = m.assignments?.mae?.side || 'オモテ';
+                      const mainSubPart = m.assignments?.main?.sub_part || '1st';
+                      const mainSide = m.assignments?.main?.side || 'オモテ';
+
+                      const isUpdatingMae = updatingKey?.startsWith(`${m.id || m.name}-mae`);
+                      const isUpdatingMain = updatingKey?.startsWith(`${m.id || m.name}-main`);
+
+                      return (
+                        <tr key={m.id || m.name} className="border-b border-[#14233c] hover:bg-[#11203b]">
+                          <td className="p-2.5 font-bold text-blue-400">{m.part}</td>
+                          <td className="p-2.5 font-medium whitespace-nowrap">
+                            {m.name}
+                            {m.is_top && <span className="ml-1 text-amber-400 font-bold">♪</span>}
+                          </td>
+
+                          {/* 前曲・中曲（直接編集） */}
+                          <td className="p-2.5">
+                            <div className="flex items-center gap-1 flex-nowrap">
+                              <div className="inline-flex rounded border border-[#223859] bg-[#060e1c] p-0.5">
+                                {['1st', '2nd'].map(sp => (
+                                  <button
+                                    key={sp}
+                                    type="button"
+                                    disabled={isAuthRequired || isUpdatingMae}
+                                    onClick={() => handleQuickUpdate(m, 'mae', 'sub_part', sp)}
+                                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                                      maeSubPart === sp ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {sp}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                disabled={isAuthRequired || isUpdatingMae}
+                                onClick={() => handleQuickUpdate(m, 'mae', 'side', maeSide === 'オモテ' ? 'ウラ' : 'オモテ')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                  maeSide === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
+                                }`}
+                              >
+                                {maeSide}
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* メイン曲（直接編集） */}
+                          <td className="p-2.5">
+                            <div className="flex items-center gap-1 flex-nowrap">
+                              <div className="inline-flex rounded border border-[#223859] bg-[#060e1c] p-0.5">
+                                {['1st', '2nd'].map(sp => (
+                                  <button
+                                    key={sp}
+                                    type="button"
+                                    disabled={isAuthRequired || isUpdatingMain}
+                                    onClick={() => handleQuickUpdate(m, 'main', 'sub_part', sp)}
+                                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                                      mainSubPart === sp ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {sp}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                disabled={isAuthRequired || isUpdatingMain}
+                                onClick={() => handleQuickUpdate(m, 'main', 'side', mainSide === 'オモテ' ? 'ウラ' : 'オモテ')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                  mainSide === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
+                                }`}
+                              >
+                                {mainSide}
+                              </button>
+                            </div>
+                          </td>
+
+                          <td className="p-2.5 text-right space-x-1 whitespace-nowrap">
+                            <button 
+                              onClick={() => startEdit(m)}
+                              disabled={isAuthRequired}
+                              className="px-2 py-0.5 rounded bg-blue-900/60 hover:bg-blue-800 disabled:opacity-30 text-blue-300 text-[11px]"
+                            >
+                              編集
+                            </button>
+                            <button 
+                              onClick={() => handleDelete(m)}
+                              disabled={isAuthRequired}
+                              className="px-2 py-0.5 rounded bg-red-900/60 hover:bg-red-800 disabled:opacity-30 text-red-300 text-[11px]"
+                            >
+                              削除
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
