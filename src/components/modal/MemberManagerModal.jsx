@@ -208,6 +208,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
           is_top: Boolean(m.isTop),
           assignments: {
             mae: { sub_part: "1st", side: "オモテ" },
+            naka: { sub_part: "1st", side: "オモテ" },
             main: { sub_part: "1st", side: "オモテ" }
           }
         });
