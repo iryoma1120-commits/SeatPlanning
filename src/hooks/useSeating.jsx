@@ -1,6 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { parseExcelFile } from '../utils/parser';
-import { PART_ORDER } from '../utils/constants';
+import { fetchPartMembers, upsertPartMember, deletePartMember, normalizeName } from '../services/memberService';
 
 const SeatingContext = createContext();
 export const useSeatingContext = () => useContext(SeatingContext);
@@ -11,7 +11,8 @@ export const useSeatingContext = () => useContext(SeatingContext);
 export const SeatingProvider = ({ children }) => {
   // --- 状態定義 ---
   const [sessions, setSessions] = useState([]);    // 練習日程リスト
-  const [allMembers, setAllMembers] = useState([]); // 全メンバーデータ
+  const [allMembers, setAllMembers] = useState([]); // 全メンバーデータ (Excel読込結果)
+  const [dbMembers, setDbMembers] = useState([]);   // Supabaseから読み込んだパートメンバー設定
   const [pults, setPults] = useState([]);          // 現在表示中のプルト配置
   const [history, setHistory] = useState([]);       // アンドゥ用の履歴
   
@@ -19,11 +20,59 @@ export const SeatingProvider = ({ children }) => {
   const [part, setPart] = useState("");            // 選択中のパート
   const [piece, setPiece] = useState("前曲");       // 選択中の曲設定（練習/本番：前/中/メイン）
   const [msg, setMsg] = useState({ text: "", type: "" }); // 通知メッセージ
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   // 利用可能な弦楽器パートのリスト
   const availableParts = useMemo(() => {
     return ["Vn1st", "Vn2nd", "Va", "Vc", "Cb"];
   }, []);
+
+  /**
+   * Supabaseからパートメンバー設定を取得
+   */
+  const loadDbMembers = useCallback(async () => {
+    setLoadingMembers(true);
+    try {
+      const data = await fetchPartMembers();
+      setDbMembers(data || []);
+    } catch (err) {
+      console.error("Supabaseからのデータ取得に失敗:", err);
+    } finally {
+      setLoadingMembers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDbMembers();
+  }, [loadDbMembers]);
+
+  /**
+   * メンバー設定のSupabase保存
+   */
+  const saveMember = async (memberData) => {
+    try {
+      await upsertPartMember(memberData);
+      await loadDbMembers(); // リロードして最新化
+      setMsg({ text: `✅ ${memberData.name} の設定を保存しました`, type: "text-green-400" });
+    } catch (err) {
+      setMsg({ text: `❌ 保存に失敗しました: ${err.message}`, type: "text-red-400" });
+      throw err;
+    }
+  };
+
+  /**
+   * メンバー設定の削除
+   */
+  const removeMember = async (id, memberPart) => {
+    try {
+      await deletePartMember(id, memberPart);
+      await loadDbMembers();
+      setMsg({ text: "✅ メンバーを削除しました", type: "text-green-400" });
+    } catch (err) {
+      setMsg({ text: `❌ 削除に失敗しました: ${err.message}`, type: "text-red-400" });
+      throw err;
+    }
+  };
 
   /**
    * Excelファイルを読み込み、メンバーとセッション情報をパースして状態を更新する
@@ -56,15 +105,34 @@ export const SeatingProvider = ({ children }) => {
     const isVn = (isVn1 || isVn2);
     const isMae = piece.includes("前曲") || piece.includes("中曲");
     const isHonban = piece.includes("本番");
-    const pk = isMae ? "mae" : "main"; // メンバー情報のパートキー
-    const sk = isMae ? "ms" : "ns";   // メンバー情報のオモテ・ウラキー
+    const pieceKey = isMae ? "mae" : "main";
+
+    // Supabaseから取得した設定を正規化名でマッピング
+    const memberConfigMap = new Map();
+    dbMembers.forEach(dm => {
+      const key = dm.name_normalized || normalizeName(dm.name);
+      memberConfigMap.set(key, dm);
+    });
+
+    // Excelメンバー情報にSupabaseの設定を結合
+    const enrichedMembers = allMembers.map(m => {
+      const norm = m.nameNormalized || normalizeName(m.name);
+      const conf = memberConfigMap.get(norm);
+      const assign = conf?.assignments?.[pieceKey] || null;
+      return {
+        ...m,
+        isTop: m.isTop || Boolean(conf?.is_top),
+        assignment: assign,
+        dbConfig: conf
+      };
+    });
 
     let attending;
     if (isVn) {
       // バイオリンの場合：1st/2ndの移動があるため、Vn全体から対象者を取得
-      const tgt = isVn1 ? "1st" : "2nd";
+      const targetSubPart = isVn1 ? "1st" : "2nd";
 
-      attending = allMembers.filter(m => {
+      attending = enrichedMembers.filter(m => {
         if (m.part !== "Vn") return false;
         // 練習モードの場合は出欠を確認
         if (!isHonban) {
@@ -72,14 +140,13 @@ export const SeatingProvider = ({ children }) => {
           if (!a || !["○", "△", "▽", "◯"].includes(a.status)) return false;
         }
         // 曲ごとのパート設定（1st/2nd）を確認
-        if (!m.vnInfo) return isVn2; // 設定がない場合はデフォルトで2nd
-        return m.vnInfo[pk] === tgt;
+        if (!m.assignment?.sub_part) return isVn2; // 設定がない場合はデフォルトで2nd
+        return m.assignment.sub_part === targetSubPart;
       });
-      // ♪（主席・副主席候補）付きを優先して並び替え
       attending.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
     } else {
-      // その他の楽器：単純にそのパートのメンバーを抽出
-      attending = allMembers.filter(m => {
+      // その他の楽器：パート一致メンバーを抽出
+      attending = enrichedMembers.filter(m => {
         if (m.part !== part) return false;
         if (!isHonban) {
           const a = m.att[date];
@@ -93,29 +160,59 @@ export const SeatingProvider = ({ children }) => {
     const newPults = [];
     if (isVn) {
       // バイオリン：オモテとウラの指定を反映させてプルトを組む
-      const omoList = attending.filter(m => m.vnInfo?.[sk] === "オモテ");
-      const uraList = attending.filter(m => m.vnInfo?.[sk] === "ウラ");
-      const noInfoList = attending.filter(m => !m.vnInfo);
+      const omoList = attending.filter(m => m.assignment?.side === "オモテ");
+      const uraList = attending.filter(m => m.assignment?.side === "ウラ");
+      const noInfoList = attending.filter(m => !m.assignment?.side);
       const uraAll = [...uraList, ...noInfoList];
 
-      // ♪付きを各リストの先頭へ
+      // ♪（トップ）付きを各リストの先頭へ
       omoList.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
       uraAll.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
 
       const rows = Math.max(omoList.length, uraAll.length);
       for (let i = 0; i < rows; i++) {
         // [インサイド(ウラ), アウトサイド(オモテ)] の順で格納
-        newPults.push({ id: "p" + (i + 1), col: "L", row: i, slots: [uraAll[i]?.name || null, omoList[i]?.name || null] });
+        newPults.push({ 
+          id: "p" + (i + 1), 
+          col: "L", 
+          row: i, 
+          slots: [uraAll[i]?.name || null, omoList[i]?.name || null] 
+        });
       }
     } else {
-      // その他の楽器：リストの順に2人ずつプルトを組む
-      for (let i = 0; i < attending.length; i += 2) {
-        // [アウトサイド(オモテ), インサイド(ウラ)] の順で格納
-        newPults.push({ id: "p" + (i / 2 + 1), col: "L", row: i / 2, slots: [attending[i]?.name || null, attending[i + 1]?.name || null] });
+      // その他の楽器：オモテ・ウラ指定があれば尊重、なければリスト順
+      const hasSpecificSide = attending.some(m => m.assignment?.side);
+      if (hasSpecificSide) {
+        const omoList = attending.filter(m => m.assignment?.side === "オモテ");
+        const uraList = attending.filter(m => m.assignment?.side === "ウラ");
+        const noInfoList = attending.filter(m => !m.assignment?.side);
+        const uraAll = [...uraList, ...noInfoList];
+
+        omoList.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
+        uraAll.sort((a, b) => (b.isTop ? 1 : 0) - (a.isTop ? 1 : 0));
+
+        const rows = Math.max(omoList.length, uraAll.length);
+        for (let i = 0; i < rows; i++) {
+          newPults.push({
+            id: "p" + (i + 1),
+            col: "L",
+            row: i,
+            slots: [omoList[i]?.name || null, uraAll[i]?.name || null]
+          });
+        }
+      } else {
+        for (let i = 0; i < attending.length; i += 2) {
+          newPults.push({ 
+            id: "p" + (i / 2 + 1), 
+            col: "L", 
+            row: i / 2, 
+            slots: [attending[i]?.name || null, attending[i + 1]?.name || null] 
+          });
+        }
       }
     }
     setPults(newPults);
-  }, [date, part, piece, allMembers]);
+  }, [date, part, piece, allMembers, dbMembers]);
 
   /**
    * 操作前の状態を履歴に保存（アンドゥ用）
@@ -174,8 +271,9 @@ export const SeatingProvider = ({ children }) => {
 
   return (
     <SeatingContext.Provider value={{
-      sessions, allMembers, pults, history, date, setDate, part, setPart, piece, setPiece,
-      availableParts, msg, loadFile, buildSeats, doSwap, doSwapPults, undo
+      sessions, allMembers, dbMembers, pults, history, date, setDate, part, setPart, piece, setPiece,
+      availableParts, msg, setMsg, loadingMembers, loadDbMembers, saveMember, removeMember,
+      loadFile, buildSeats, doSwap, doSwapPults, undo
     }}>
       {children}
     </SeatingContext.Provider>

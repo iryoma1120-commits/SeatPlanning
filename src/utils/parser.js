@@ -1,5 +1,4 @@
 import * as XLSX from 'xlsx';
-import { VN_PARTS } from './constants';
 
 /**
  * Excelファイルを読み込み、Uint8Arrayとして処理を開始する
@@ -91,10 +90,13 @@ function parseAttendance(rows) {
     const nameWithSpace = c0.replace(/　/g, " ").replace(/\s+/g, " ").trim();
     const nameWithoutSpace = nameWithSpace.replace(/\s/g, "");
 
-    // Vnの場合は constants.js に定義された曲ごとのパート・オモテウラ情報を紐付け
-    const vnInfo = VN_PARTS[nameWithSpace] || VN_PARTS[nameWithoutSpace] || null;
-
-    members.push({ name: nameWithSpace, part: curPart, isTop, vnInfo, att });
+    members.push({ 
+      name: nameWithSpace, 
+      nameNormalized: nameWithoutSpace, 
+      part: curPart, 
+      isTop, 
+      att 
+    });
   }
   return { sessions: sessList, members };
 }
