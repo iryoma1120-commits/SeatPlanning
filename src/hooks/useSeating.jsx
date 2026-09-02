@@ -128,9 +128,15 @@ export const SeatingProvider = ({ children }) => {
     const isVn1 = (part === "Vn1st");
     const isVn2 = (part === "Vn2nd");
     const isVn = (isVn1 || isVn2);
-    const isMae = piece.includes("前曲") || piece.includes("中曲");
     const isHonban = piece.includes("本番");
-    const pieceKey = isMae ? "mae" : "main";
+
+    // 曲の判定（前曲 / 中曲 / メイン曲）
+    let pieceKey = "main";
+    if (piece.includes("前曲")) {
+      pieceKey = "mae";
+    } else if (piece.includes("中曲")) {
+      pieceKey = "naka";
+    }
 
     // Supabaseから取得した設定を正規化名でマッピング
     const memberConfigMap = new Map();
@@ -143,7 +149,10 @@ export const SeatingProvider = ({ children }) => {
     const enrichedMembers = allMembers.map(m => {
       const norm = m.nameNormalized || normalizeName(m.name);
       const conf = memberConfigMap.get(norm);
-      const assign = conf?.assignments?.[pieceKey] || null;
+      // naka が未設定の場合は mae をフォールバックとして参照
+      const assign = conf?.assignments?.[pieceKey] || 
+        (pieceKey === "naka" ? conf?.assignments?.mae : null) || 
+        null;
       return {
         ...m,
         isTop: m.isTop || Boolean(conf?.is_top),
@@ -159,6 +168,9 @@ export const SeatingProvider = ({ children }) => {
 
       attending = enrichedMembers.filter(m => {
         if (m.part !== "Vn") return false;
+        // 「降り」に設定されている曲の場合は座席表・出席者から除外
+        if (m.assignment?.sub_part === "降り") return false;
+
         // 練習モードの場合は出欠を確認
         if (!isHonban) {
           const a = m.att[date];
@@ -173,6 +185,9 @@ export const SeatingProvider = ({ children }) => {
       // その他の楽器：パート一致メンバーを抽出
       attending = enrichedMembers.filter(m => {
         if (m.part !== part) return false;
+        // 「降り」に設定されている曲の場合は座席表・出席者から除外
+        if (m.assignment?.sub_part === "降り") return false;
+
         if (!isHonban) {
           const a = m.att[date];
           return a && ["○", "△", "▽", "◯"].includes(a.status);

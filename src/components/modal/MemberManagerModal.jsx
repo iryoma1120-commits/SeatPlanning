@@ -25,6 +25,8 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   const [formIsTop, setFormIsTop] = useState(false);
   const [formMaeSubPart, setFormMaeSubPart] = useState('1st');
   const [formMaeSide, setFormMaeSide] = useState('オモテ');
+  const [formNakaSubPart, setFormNakaSubPart] = useState('1st');
+  const [formNakaSide, setFormNakaSide] = useState('オモテ');
   const [formMainSubPart, setFormMainSubPart] = useState('1st');
   const [formMainSide, setFormMainSide] = useState('オモテ');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,7 +49,9 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
   const handleStageChange = (member, pieceKey, field, value) => {
     const key = member.id || member.name_normalized || member.name;
     const currentObj = pendingChanges[key] || member;
-    const currentPieceConfig = currentObj.assignments?.[pieceKey] || { sub_part: '1st', side: 'オモテ' };
+    const currentPieceConfig = currentObj.assignments?.[pieceKey] || 
+      (pieceKey === 'naka' ? currentObj.assignments?.mae : null) || 
+      { sub_part: '1st', side: 'オモテ' };
 
     const updatedPieceConfig = {
       ...currentPieceConfig,
@@ -108,6 +112,8 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
     setFormIsTop(Boolean(m.is_top));
     setFormMaeSubPart(m.assignments?.mae?.sub_part || '1st');
     setFormMaeSide(m.assignments?.mae?.side || 'オモテ');
+    setFormNakaSubPart(m.assignments?.naka?.sub_part || m.assignments?.mae?.sub_part || '1st');
+    setFormNakaSide(m.assignments?.naka?.side || m.assignments?.mae?.side || 'オモテ');
     setFormMainSubPart(m.assignments?.main?.sub_part || '1st');
     setFormMainSide(m.assignments?.main?.side || 'オモテ');
   };
@@ -119,6 +125,8 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
     setFormIsTop(false);
     setFormMaeSubPart('1st');
     setFormMaeSide('オモテ');
+    setFormNakaSubPart('1st');
+    setFormNakaSide('オモテ');
     setFormMainSubPart('1st');
     setFormMainSide('オモテ');
   };
@@ -141,6 +149,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
         is_top: formIsTop,
         assignments: {
           mae: { sub_part: formMaeSubPart, side: formMaeSide },
+          naka: { sub_part: formNakaSubPart, side: formNakaSide },
           main: { sub_part: formMainSubPart, side: formMainSide }
         }
       });
@@ -328,6 +337,7 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                       <th className="p-2.5">パート</th>
                       <th className="p-2.5">氏名</th>
                       <th className="p-2.5 min-w-[130px]">前曲</th>
+                      <th className="p-2.5 min-w-[130px]">中曲</th>
                       <th className="p-2.5 min-w-[130px]">メイン曲</th>
                       <th className="p-2.5 text-right">操作</th>
                     </tr>
@@ -338,10 +348,67 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                       const activeMember = pendingChanges[memberKey] || m;
                       const isPending = Boolean(pendingChanges[memberKey]);
 
-                      const maeSubPart = activeMember.assignments?.mae?.sub_part || '1st';
-                      const maeSide = activeMember.assignments?.mae?.side || 'オモテ';
-                      const mainSubPart = activeMember.assignments?.main?.sub_part || '1st';
-                      const mainSide = activeMember.assignments?.main?.side || 'オモテ';
+                      const renderModalPieceCell = (pieceKey, pieceName) => {
+                        const currentPiece = activeMember.assignments?.[pieceKey] || 
+                          (pieceKey === 'naka' ? activeMember.assignments?.mae : null) || 
+                          { sub_part: '1st', side: 'オモテ' };
+
+                        const originalPiece = m.assignments?.[pieceKey] || 
+                          (pieceKey === 'naka' ? m.assignments?.mae : null) || 
+                          { sub_part: '1st', side: 'オモテ' };
+
+                        const subPart = currentPiece.sub_part || '1st';
+                        const side = currentPiece.side || 'オモテ';
+                        const isFuri = subPart === '降り';
+                        const isSubPartChanged = isPending && originalPiece.sub_part !== subPart;
+
+                        return (
+                          <td className="p-2.5">
+                            <div className="flex items-center gap-1 flex-nowrap">
+                              <div className="inline-flex rounded border border-[#223859] bg-[#060e1c] p-0.5">
+                                {['1st', '2nd', '降り'].map(sp => {
+                                  const isSelected = subPart === sp;
+                                  return (
+                                    <button
+                                      key={sp}
+                                      type="button"
+                                      onClick={() => handleStageChange(m, pieceKey, 'sub_part', sp)}
+                                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
+                                        isSelected
+                                          ? isSubPartChanged
+                                            ? 'bg-amber-600 text-white'
+                                            : sp === '降り'
+                                              ? 'bg-rose-700 text-white'
+                                              : 'bg-blue-600 text-white'
+                                          : sp === '降り'
+                                            ? 'text-rose-400 hover:text-rose-200'
+                                            : 'text-gray-400 hover:text-white'
+                                      }`}
+                                      title={`${pieceName}を ${sp} に設定`}
+                                    >
+                                      {sp}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {isFuri ? (
+                                <span className="text-gray-600 text-[10px] px-1 select-none">-</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStageChange(m, pieceKey, 'side', side === 'オモテ' ? 'ウラ' : 'オモテ')}
+                                  className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                    side === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
+                                  }`}
+                                  title={`${pieceName}のオモテ/ウラ切り替え`}
+                                >
+                                  {side}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        );
+                      };
 
                       return (
                         <tr 
@@ -357,71 +424,9 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
                             {isPending && <span className="ml-1 text-[10px] text-amber-400 font-bold">(未適用)</span>}
                           </td>
 
-                          {/* 前曲・中曲（直接編集） */}
-                          <td className="p-2.5">
-                            <div className="flex items-center gap-1 flex-nowrap">
-                              <div className="inline-flex rounded border border-[#223859] bg-[#060e1c] p-0.5">
-                                {['1st', '2nd'].map(sp => (
-                                  <button
-                                    key={sp}
-                                    type="button"
-                                    onClick={() => handleStageChange(m, 'mae', 'sub_part', sp)}
-                                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                      maeSubPart === sp 
-                                        ? isPending && (m.assignments?.mae?.sub_part || '1st') !== sp 
-                                          ? 'bg-amber-600 text-white' 
-                                          : 'bg-blue-600 text-white' 
-                                        : 'text-gray-400 hover:text-white'
-                                    }`}
-                                  >
-                                    {sp}
-                                  </button>
-                                ))}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleStageChange(m, 'mae', 'side', maeSide === 'オモテ' ? 'ウラ' : 'オモテ')}
-                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
-                                  maeSide === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
-                                }`}
-                              >
-                                {maeSide}
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* メイン曲（直接編集） */}
-                          <td className="p-2.5">
-                            <div className="flex items-center gap-1 flex-nowrap">
-                              <div className="inline-flex rounded border border-[#223859] bg-[#060e1c] p-0.5">
-                                {['1st', '2nd'].map(sp => (
-                                  <button
-                                    key={sp}
-                                    type="button"
-                                    onClick={() => handleStageChange(m, 'main', 'sub_part', sp)}
-                                    className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
-                                      mainSubPart === sp 
-                                        ? isPending && (m.assignments?.main?.sub_part || '1st') !== sp 
-                                          ? 'bg-amber-600 text-white' 
-                                          : 'bg-blue-600 text-white' 
-                                        : 'text-gray-400 hover:text-white'
-                                    }`}
-                                  >
-                                    {sp}
-                                  </button>
-                                ))}
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => handleStageChange(m, 'main', 'side', mainSide === 'オモテ' ? 'ウラ' : 'オモテ')}
-                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
-                                  mainSide === 'ウラ' ? 'bg-purple-950/70 border-purple-800 text-purple-300' : 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
-                                }`}
-                              >
-                                {mainSide}
-                              </button>
-                            </div>
-                          </td>
+                          {renderModalPieceCell('mae', '前曲')}
+                          {renderModalPieceCell('naka', '中曲')}
+                          {renderModalPieceCell('main', 'メイン曲')}
 
                           <td className="p-2.5 text-right space-x-1 whitespace-nowrap">
                             <button 
@@ -523,29 +528,61 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
               </div>
 
               {/* 前曲設定 */}
-              <div className="border border-[#182740] rounded-lg p-3 bg-[#060c18]">
-                <div className="font-semibold text-gray-300 mb-2">🎵 前曲・中曲での配置設定</div>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="border border-[#182740] rounded-lg p-2.5 bg-[#060c18]">
+                <div className="font-semibold text-gray-300 mb-1.5 text-xs">🎵 前曲での配置設定</div>
+                <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-gray-400 mb-1">パート区分</label>
+                    <label className="block text-gray-400 mb-1 text-[11px]">パート区分</label>
                     <select 
                       value={formMaeSubPart} 
                       onChange={e => setFormMaeSubPart(e.target.value)}
                       disabled={isAuthRequired}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
                       <option value="1st">1st</option>
                       <option value="2nd">2nd</option>
-                      <option value="3rd">3rd</option>
+                      <option value="降り">降り (非出演)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-400 mb-1">席位置</label>
+                    <label className="block text-gray-400 mb-1 text-[11px]">席位置</label>
                     <select 
                       value={formMaeSide} 
                       onChange={e => setFormMaeSide(e.target.value)}
+                      disabled={isAuthRequired || formMaeSubPart === '降り'}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
+                    >
+                      <option value="オモテ">オモテ (外側)</option>
+                      <option value="ウラ">ウラ (内側)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* 中曲設定 */}
+              <div className="border border-[#182740] rounded-lg p-2.5 bg-[#060c18]">
+                <div className="font-semibold text-cyan-300 mb-1.5 text-xs">🎶 中曲での配置設定</div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-gray-400 mb-1 text-[11px]">パート区分</label>
+                    <select 
+                      value={formNakaSubPart} 
+                      onChange={e => setFormNakaSubPart(e.target.value)}
                       disabled={isAuthRequired}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
+                    >
+                      <option value="1st">1st</option>
+                      <option value="2nd">2nd</option>
+                      <option value="降り">降り (非出演)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1 text-[11px]">席位置</label>
+                    <select 
+                      value={formNakaSide} 
+                      onChange={e => setFormNakaSide(e.target.value)}
+                      disabled={isAuthRequired || formNakaSubPart === '降り'}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
                       <option value="オモテ">オモテ (外側)</option>
                       <option value="ウラ">ウラ (内側)</option>
@@ -555,29 +592,29 @@ export default function MemberManagerModal({ isOpen, onClose, onOpenAuth }) {
               </div>
 
               {/* メイン曲設定 */}
-              <div className="border border-[#182740] rounded-lg p-3 bg-[#060c18]">
-                <div className="font-semibold text-gray-300 mb-2">🎼 メイン曲での配置設定</div>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="border border-[#182740] rounded-lg p-2.5 bg-[#060c18]">
+                <div className="font-semibold text-indigo-300 mb-1.5 text-xs">🎼 メイン曲での配置設定</div>
+                <div className="grid grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-gray-400 mb-1">パート区分</label>
+                    <label className="block text-gray-400 mb-1 text-[11px]">パート区分</label>
                     <select 
                       value={formMainSubPart} 
                       onChange={e => setFormMainSubPart(e.target.value)}
                       disabled={isAuthRequired}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
                       <option value="1st">1st</option>
                       <option value="2nd">2nd</option>
-                      <option value="3rd">3rd</option>
+                      <option value="降り">降り (非出演)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-gray-400 mb-1">席位置</label>
+                    <label className="block text-gray-400 mb-1 text-[11px]">席位置</label>
                     <select 
                       value={formMainSide} 
                       onChange={e => setFormMainSide(e.target.value)}
-                      disabled={isAuthRequired}
-                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40"
+                      disabled={isAuthRequired || formMainSubPart === '降り'}
+                      className="w-full bg-[#060d1c] border border-[#243650] rounded-lg px-2 py-1 text-white disabled:opacity-40 text-xs"
                     >
                       <option value="オモテ">オモテ (外側)</option>
                       <option value="ウラ">ウラ (内側)</option>
