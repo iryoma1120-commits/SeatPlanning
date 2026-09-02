@@ -5,12 +5,16 @@ import { generateTextOutput } from '../../utils/export';
 import MemberManagerModal from '../modal/MemberManagerModal';
 import AuthModal from '../modal/AuthModal';
 
-export default function Header() {
+export default function Header({ activeTab, setActiveTab, onOpenAuth }) {
   const { history, pults, loadFile, buildSeats, undo, date, part, piece, sessions } = useSeatingContext();
   const { user, signOut, isSupabaseConfigured } = useAuth();
   const [copyOutput, setCopyOutput] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  const handleOpenAuth = () => {
+    if (onOpenAuth) onOpenAuth();
+    else setIsAuthModalOpen(true);
+  };
 
   const handleCopy = () => {
     const text = generateTextOutput(date, part, piece, sessions, pults);
@@ -20,8 +24,34 @@ export default function Header() {
 
   return (
     <>
-      <div id="header" className="sticky top-0 z-50 bg-[#04080f]/95 backdrop-blur-md border-b border-[#1a2d45] px-4 py-3 flex items-center gap-3 flex-wrap">
-        <h1 className="text-[17px] font-black tracking-wide whitespace-nowrap">🎻 座席表<span className="text-[11px] font-normal text-[#7a90b0] ml-2">Orchestra Seating</span></h1>
+      <div id="header" className="sticky top-0 z-50 bg-[#04080f]/95 backdrop-blur-md border-b border-[#1a2d45] px-4 py-2.5 flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-4">
+          <h1 className="text-[17px] font-black tracking-wide whitespace-nowrap">🎻 座席表<span className="text-[11px] font-normal text-[#7a90b0] ml-2">Orchestra Seating</span></h1>
+          
+          {/* メインタブ切り替え */}
+          <nav className="flex items-center bg-[#07101e] border border-[#1d304a] rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setActiveTab('seating')}
+              className={`px-3 py-1 text-xs rounded-lg font-medium transition flex items-center gap-1.5 ${
+                activeTab === 'seating'
+                  ? 'bg-blue-600 text-white shadow font-bold'
+                  : 'text-gray-400 hover:text-white hover:bg-[#122238]'
+              }`}
+            >
+              <span>🎻</span> 座席表
+            </button>
+            <button
+              onClick={() => setActiveTab('members')}
+              className={`px-3 py-1 text-xs rounded-lg font-medium transition flex items-center gap-1.5 ${
+                activeTab === 'members'
+                  ? 'bg-blue-600 text-white shadow font-bold'
+                  : 'text-gray-400 hover:text-white hover:bg-[#122238]'
+              }`}
+            >
+              <span>👥</span> メンバー名簿・登録
+            </button>
+          </nav>
+        </div>
         <div id="header-right" className="flex gap-2 flex-wrap ml-auto items-center">
           {/* ログイン・認証ステータス */}
           {user ? (
@@ -39,7 +69,7 @@ export default function Header() {
             </div>
           ) : (
             <button
-              onClick={() => setIsAuthModalOpen(true)}
+              onClick={handleOpenAuth}
               className="bg-[#0e1f38] border border-[#2d4d7a] text-blue-300 hover:bg-[#162d4f] hover:border-blue-400 rounded-lg px-3 py-1.5 text-xs transition-colors font-medium whitespace-nowrap"
             >
               🔑 ログイン
