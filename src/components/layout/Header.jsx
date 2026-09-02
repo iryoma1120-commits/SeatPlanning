@@ -9,6 +9,7 @@ export default function Header({ activeTab, setActiveTab, onOpenAuth }) {
   const { history, pults, loadFile, buildSeats, undo, date, part, piece, sessions } = useSeatingContext();
   const { user, signOut, isSupabaseConfigured } = useAuth();
   const [copyOutput, setCopyOutput] = useState("");
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const handleOpenAuth = () => {
@@ -77,7 +78,7 @@ export default function Header({ activeTab, setActiveTab, onOpenAuth }) {
           )}
 
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => setActiveTab ? setActiveTab('members') : setIsModalOpen(true)}
             className="bg-[#0b1525] border border-[#2e476d] text-blue-300 rounded-lg px-3 py-1.5 text-xs transition-colors hover:bg-[#132238] hover:border-blue-400 whitespace-nowrap font-medium"
           >
             👥 メンバー設定

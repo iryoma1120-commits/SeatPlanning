@@ -23,21 +23,32 @@ export const AuthProvider = ({ children }) => {
     }
 
     // 初回セッション取得
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        setSession(data?.session ?? null);
+        setUser(data?.session?.user ?? null);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.warn('[Supabase Auth] セッション取得エラー:', err);
+        setLoading(false);
+      });
 
     // 認証状態の変更リスナー
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    let authSub = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session ?? null);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      });
+      authSub = data?.subscription;
+    } catch (err) {
+      console.warn('[Supabase Auth] リスナー登録エラー:', err);
+    }
 
     return () => {
-      subscription.unsubscribe();
+      authSub?.unsubscribe?.();
     };
   }, []);
 
